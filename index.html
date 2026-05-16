@@ -2632,20 +2632,38 @@ function extractInvoiceItems(text) {
     // Skip header / footer rows
     if (SKIP_RE.test(beforeOrd)) continue;
 
-    // ── Lookback: multi-line product names (MF invoice wraps long names across PDF lines) ──
-    // Walk back up to 3 lines and prepend any lines that are clearly product-name continuations:
-    //   - no £ sign (a £ would mean it belongs to a different item's price column)
-    //   - no Ordered:/Shipped: anchor
-    //   - not a header/footer pattern
-    // This reconstructs e.g. "Optimum Nutrition 100% Whey Gold Standard 2.27kg | Double Chocolate"
-    // when the name splits across two Y-buckets in the PDF.
+    // ── Context window: reconstruct full product name regardless of PDF Y-bucket layout ──
+    // PDF.js Y-bucketing can place the product name, price, and Ordered: on separate lines
+    // depending on how the browser rendered the table to PDF (top-align vs centre-align rows).
+    // Strategy: walk BACKWARD (name above Ordered:) then FORWARD (name below Ordered:)
+    // until a usable price appears or a boundary token is hit.
+
+    // Backward pass — prepend lines that look like product-name parts
     for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
       const prev = lines[j].trim();
-      if (!prev) break;
-      if (SKIP_RE.test(prev)) break;
+      if (!prev || SKIP_RE.test(prev)) break;
       if (/Ordered\s*:/i.test(prev) || /Shipped\s*:/i.test(prev)) break;
-      if (/£/.test(prev)) break; // has a price → belongs to a previous item
+      // Stop at a standalone subtotal line — e.g. "£88.20" alone (previous item's subtotal column).
+      // Real product lines always have substantial non-price text alongside the price.
+      const prevStripped = prev.replace(/[££][\d,]+\.[\d]{2}/g, '').trim();
+      if (prevStripped.length < 5) break;
       beforeOrd = prev + ' ' + beforeOrd;
+    }
+
+    // Forward pass — if still no price in context, product name may be BELOW Ordered: in Y-sort
+    // (happens when Ordered: text is top-aligned in a taller row while name is centre-aligned)
+    const _hasPriceNow = [...beforeOrd.matchAll(/[\d,]+\.[\d]{2}/g)]
+      .filter(m => !/^\s*(?:kg|ml|cl|oz|g)\b/i.test(beforeOrd.slice(m.index + m[0].length)));
+    if (!_hasPriceNow.length) {
+      for (let j = i + 1; j <= Math.min(i + 3, lines.length - 1); j++) {
+        const nxt = lines[j].trim();
+        if (!nxt || SKIP_RE.test(nxt)) break;
+        if (/Shipped\s*:/i.test(nxt) || /Ordered\s*:/i.test(nxt)) break;
+        beforeOrd += ' ' + nxt;
+        const nowHas = [...beforeOrd.matchAll(/[\d,]+\.[\d]{2}/g)]
+          .filter(m => !/^\s*(?:kg|ml|cl|oz|g)\b/i.test(beforeOrd.slice(m.index + m[0].length)));
+        if (nowHas.length) break;
+      }
     }
 
     // Fix 1: use first price before "Ordered:", not last (last was the subtotal)
