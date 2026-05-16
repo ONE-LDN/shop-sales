@@ -2613,9 +2613,10 @@ function extractInvoiceItems(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const items = [];
 
-  // Fix 4: broadened SKU regex
-  const SKU_RE  = /\s+(?:\d{4,}|[A-Z0-9]{1,5}-[A-Z0-9-]+)\s*$/i;
+  // Fix 4: broadened SKU regex — allow alphanumeric suffix e.g. "39495A"
+  const SKU_RE  = /\s+(?:\d{4,}[A-Za-z]?|[A-Z0-9]{2,5}-[A-Z0-9-]+)\s*$/i;
   const SHIP_RE = /Shipped\s*:\s*(\d+)/i;
+  const SKIP_RE = /^(Product\s*Name|SKU|Price|Qty|Subtotal|Grand\s*Total|Shipping|Tax|Order\s*#|Order\s*Date|http)/i;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -2626,13 +2627,31 @@ function extractInvoiceItems(text) {
 
     const orderedQty = parseInt(ordMatch[1]);
     const ordIdx     = line.indexOf(ordMatch[0]);
-    const beforeOrd  = line.slice(0, ordIdx).trim();
+    let   beforeOrd  = line.slice(0, ordIdx).trim();
 
     // Skip header / footer rows
-    if (/^(Product\s*Name|SKU|Price|Qty|Subtotal|Grand\s*Total|Shipping|Tax|Order\s*#|Order\s*Date)/i.test(beforeOrd)) continue;
+    if (SKIP_RE.test(beforeOrd)) continue;
+
+    // ── Lookback: multi-line product names (MF invoice wraps long names across PDF lines) ──
+    // Walk back up to 3 lines and prepend any lines that are clearly product-name continuations:
+    //   - no £ sign (a £ would mean it belongs to a different item's price column)
+    //   - no Ordered:/Shipped: anchor
+    //   - not a header/footer pattern
+    // This reconstructs e.g. "Optimum Nutrition 100% Whey Gold Standard 2.27kg | Double Chocolate"
+    // when the name splits across two Y-buckets in the PDF.
+    for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+      const prev = lines[j].trim();
+      if (!prev) break;
+      if (SKIP_RE.test(prev)) break;
+      if (/Ordered\s*:/i.test(prev) || /Shipped\s*:/i.test(prev)) break;
+      if (/£/.test(prev)) break; // has a price → belongs to a previous item
+      beforeOrd = prev + ' ' + beforeOrd;
+    }
 
     // Fix 1: use first price before "Ordered:", not last (last was the subtotal)
-    const priceMatches = [...beforeOrd.matchAll(/[\d,]+\.[\d]{2}/g)];
+    // Also filter out decimal numbers that are product dimensions (e.g. "2.27" in "2.27kg")
+    const priceMatches = [...beforeOrd.matchAll(/[\d,]+\.[\d]{2}/g)]
+      .filter(m => !/^\s*(?:kg|ml|cl|oz|g)\b/i.test(beforeOrd.slice(m.index + m[0].length)));
     if (!priceMatches.length) continue;
     const firstPriceStr = priceMatches[0][0];
     const pricePerCase  = parseFloat(firstPriceStr.replace(',', ''));
