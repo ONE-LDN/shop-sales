@@ -826,6 +826,17 @@
       <div id="historyMonthPills" class="history-month-pills"></div>
       <button class="cost-edit-btn" id="openCostEditBtn">Edit cost prices</button>
     </div>
+    <div class="pred-controls" style="margin-bottom:18px">
+      <select id="historyCatFilter">
+        <option value="">All categories</option>
+        <option value="Shakes">Shakes</option>
+        <option value="Bars &amp; Snacks">Bars &amp; Snacks</option>
+        <option value="Functional Drinks">Functional Drinks</option>
+      </select>
+      <select id="historyBrandFilter">
+        <option value="">All brands</option>
+      </select>
+    </div>
     <div id="historyContent"></div>
   </div><!-- /history section -->
 
@@ -2361,16 +2372,36 @@ async function renderStockHistory() {
     const costPrice = info.cost_price != null ? parseFloat(info.cost_price) : null;
     const cogs      = costPrice != null ? sold * costPrice : null;
     const gp        = (cogs != null && revenue > 0) ? (revenue - cogs) / revenue * 100 : null;
-    rows.push({ key, displayName: info.display_name || key, brand: info.brand || '', delivered, sold, net, revenue, cogs, gp });
+    const cat = info.category || getFallbackCategory(key);
+    rows.push({ key, displayName: info.display_name || key, brand: info.brand || '', cat, delivered, sold, net, revenue, cogs, gp });
   }
   rows.sort((a, b) => a.brand.localeCompare(b.brand) || a.displayName.localeCompare(b.displayName));
 
+  // ── Populate brand filter dynamically ──
+  const brandSel   = document.getElementById('historyBrandFilter');
+  const prevBrand  = brandSel.value;
+  const brandSet   = new Set(rows.map(r => r.brand).filter(Boolean));
+  brandSel.innerHTML = '<option value="">All brands</option>' +
+    [...brandSet].sort().map(b => `<option value="${b}"${b === prevBrand ? ' selected' : ''}>${b}</option>`).join('');
+
+  // ── Apply filters ──
+  const catFilter   = document.getElementById('historyCatFilter').value;
+  const brandFilter = brandSel.value;
+  let filtered = rows;
+  if (catFilter)   filtered = filtered.filter(r => r.cat   === catFilter);
+  if (brandFilter) filtered = filtered.filter(r => r.brand === brandFilter);
+
+  if (!filtered.length) {
+    content.innerHTML = '<div style="text-align:center;color:#4a4f66;padding:32px">No products match the selected filters.</div>';
+    return;
+  }
+
   // Totals
-  const totDelivered = rows.reduce((s, r) => s + r.delivered, 0);
-  const totSold      = rows.reduce((s, r) => s + r.sold, 0);
+  const totDelivered = filtered.reduce((s, r) => s + r.delivered, 0);
+  const totSold      = filtered.reduce((s, r) => s + r.sold, 0);
   const totNet       = totDelivered - totSold;
-  const totRevenue   = rows.reduce((s, r) => s + r.revenue, 0);
-  const totCogs      = rows.every(r => r.cogs != null) ? rows.reduce((s, r) => s + r.cogs, 0) : null;
+  const totRevenue   = filtered.reduce((s, r) => s + r.revenue, 0);
+  const totCogs      = filtered.every(r => r.cogs != null) ? filtered.reduce((s, r) => s + r.cogs, 0) : null;
   const totGp        = (totCogs != null && totRevenue > 0) ? (totRevenue - totCogs) / totRevenue * 100 : null;
 
   const netCell = (n) => {
@@ -2384,7 +2415,7 @@ async function renderStockHistory() {
     return `<td class="gp-cell right"><span class="no-cost-hint" id="hint-${key.replace(/[^a-z0-9]/gi,'_')}" title="Click Edit cost prices to add">—</span></td>`;
   };
 
-  const tableRows = rows.map(r => `<tr>
+  const tableRows = filtered.map(r => `<tr>
     <td>${(r.displayName).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td>
     <td class="right">${r.delivered || '—'}</td>
     <td class="right">${r.sold || '—'}</td>
@@ -3528,6 +3559,11 @@ async function init() {
   // ── Order Prediction filters ──
   ['predCatFilter', 'predBrandFilter', 'predFlagFilter'].forEach(id => {
     document.getElementById(id).addEventListener('change', renderOrderPrediction);
+  });
+
+  // ── Stock History filters ──
+  ['historyCatFilter', 'historyBrandFilter'].forEach(id => {
+    document.getElementById(id).addEventListener('change', renderStockHistory);
   });
   document.getElementById('predReloadBtn').addEventListener('click', () => {
     allDeliveries = null; // bust cache
