@@ -454,6 +454,20 @@
       transition: background .15s, border-color .15s;
     }
     .deliv-log-delete:hover { background: #f8717120; border-color: #f87171; }
+    .deliv-group { margin-bottom: 14px; border: 1px solid #1e1e1e; border-radius: 8px; overflow: hidden; }
+    .deliv-group-header {
+      display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+      background: #141414; border-bottom: 1px solid #1e1e1e; flex-wrap: wrap;
+    }
+    .deliv-group-date  { font-size: 12px; font-weight: 600; color: #b0b3c6; white-space: nowrap; }
+    .deliv-group-label { font-size: 11px; color: #666666; }
+    .deliv-group-count { font-size: 11px; color: #4a4f66; }
+    .deliv-batch-delete {
+      margin-left: auto; background: transparent; border: 1px solid #f8717155; color: #f87171;
+      border-radius: 6px; font-size: 11px; padding: 3px 10px; cursor: pointer;
+      transition: background .15s, border-color .15s; white-space: nowrap;
+    }
+    .deliv-batch-delete:hover { background: #f8717120; border-color: #f87171; }
 
     /* ── Header border ── */
     .header { margin-bottom: 22px; border-bottom: 1px solid #1e1e1e; padding-bottom: 20px; }
@@ -927,6 +941,14 @@ async function sbInsert(table, row) {
 
 async function sbDelete(table, id) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
+    method:  'DELETE',
+    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
+  });
+  if (!res.ok) throw new Error(`DB delete failed (${table}): ${res.status}`);
+}
+
+async function sbDeleteBatch(table, column, value) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${encodeURIComponent(value)}`, {
     method:  'DELETE',
     headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
   });
@@ -2084,7 +2106,7 @@ async function renderDeliveryLog() {
 
   let rows;
   try {
-    rows = await sbGet('shop_deliveries', 'select=*&order=delivery_date.desc,id.desc');
+    rows = await sbGet('shop_deliveries', 'select=*&order=delivery_date.desc,created_at.desc,id.desc');
   } catch(e) {
     content.innerHTML = `<div style="color:#f87171;padding:12px">Failed to load: ${e.message}</div>`;
     return;
@@ -2098,44 +2120,100 @@ async function renderDeliveryLog() {
 
   subEl.textContent = `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`;
 
-  const rowsHtml = rows.map(r => {
-    const [y, m, d] = (r.delivery_date || '').split('-');
-    const dateStr   = y ? `${d}/${m}/${y}` : '—';
-    const displayName = (productLookup[r.product_name_raw] || {}).display_name || r.product_name_raw;
-    const notes     = (r.notes || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const name      = displayName.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    return `<tr>
-      <td style="white-space:nowrap">${dateStr}</td>
-      <td>${name}</td>
-      <td style="text-align:right;font-weight:600">${r.quantity_received}</td>
-      <td style="color:#666666;font-size:11px">${notes}</td>
-      <td><button class="deliv-log-delete" data-id="${r.id}">Delete</button></td>
-    </tr>`;
-  }).join('');
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-  content.innerHTML = `
-    <table class="deliv-log-table">
-      <thead>
-        <tr>
-          <th>Date received</th>
+  // Group rows by upload_id; legacy rows (null upload_id) each form a solo group
+  const groups = [];
+  const byUpload = new Map();
+  rows.forEach(r => {
+    if (r.upload_id) {
+      if (byUpload.has(r.upload_id)) {
+        byUpload.get(r.upload_id).push(r);
+      } else {
+        const g = { upload_id: r.upload_id, rows: [r] };
+        byUpload.set(r.upload_id, g.rows);
+        groups.push(g);
+      }
+    } else {
+      groups.push({ upload_id: null, rows: [r] });
+    }
+  });
+
+  const groupsHtml = groups.map(g => {
+    const first = g.rows[0];
+    const [y, m, d] = (first.delivery_date || '').split('-');
+    const dateStr = y ? `${d}/${m}/${y}` : '—';
+    const notesVal = first.notes || '';
+    const label = notesVal.startsWith('Invoice #')
+      ? notesVal.replace(/^(Invoice #\S+).*/, '$1')
+      : (notesVal || 'Manual entry');
+    const count = g.rows.length;
+
+    const batchAttr = g.upload_id
+      ? `data-upload-id="${g.upload_id}"`
+      : `data-row-id="${first.id}"`;
+
+    const rowsHtml = g.rows.map(r => {
+      const displayName = (productLookup[r.product_name_raw] || {}).display_name || r.product_name_raw;
+      return `<tr>
+        <td>${esc(displayName)}</td>
+        <td style="text-align:right;font-weight:600">${r.quantity_received}</td>
+        <td style="color:#666666;font-size:11px">${esc(r.notes || '')}</td>
+        <td><button class="deliv-log-delete" data-id="${r.id}">×</button></td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="deliv-group">
+      <div class="deliv-group-header">
+        <span class="deliv-group-date">${dateStr}</span>
+        <span class="deliv-group-label">${esc(label)}</span>
+        <span class="deliv-group-count">${count} item${count === 1 ? '' : 's'}</span>
+        <button class="deliv-batch-delete" ${batchAttr} data-count="${count}">Delete delivery</button>
+      </div>
+      <table class="deliv-log-table">
+        <thead><tr>
           <th>Product</th>
-          <th style="text-align:right">Qty (units)</th>
+          <th style="text-align:right">Qty</th>
           <th>Notes</th>
           <th></th>
-        </tr>
-      </thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>`;
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  content.innerHTML = groupsHtml;
 
   content.querySelectorAll('.deliv-log-delete').forEach(btn => {
     btn.addEventListener('click', () => deleteDeliveryEntry(btn.dataset.id));
   });
+  content.querySelectorAll('.deliv-batch-delete').forEach(btn => {
+    btn.addEventListener('click', () =>
+      deleteDeliveryBatch(btn.dataset.uploadId || null, btn.dataset.rowId || null, parseInt(btn.dataset.count))
+    );
+  });
 }
 
 async function deleteDeliveryEntry(id) {
-  if (!confirm('Delete this delivery entry?')) return;
+  if (!confirm('Delete this item?')) return;
   try {
     await sbDelete('shop_deliveries', id);
+    allDeliveries = null;
+    renderDeliveryLog();
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+async function deleteDeliveryBatch(uploadId, rowId, count) {
+  const label = count === 1 ? 'this delivery entry' : `all ${count} items in this delivery`;
+  if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+  try {
+    if (uploadId) {
+      await sbDeleteBatch('shop_deliveries', 'upload_id', uploadId);
+    } else {
+      await sbDelete('shop_deliveries', rowId);
+    }
     allDeliveries = null;
     renderDeliveryLog();
   } catch(e) {
@@ -2452,6 +2530,7 @@ async function submitDelivery() {
       product_name_raw:  product,
       quantity_received: qty,
       notes,
+      upload_id:         crypto.randomUUID(),
     });
     status.style.color = '#4ade80';
     status.textContent = '✓ Delivery logged.';
@@ -3030,6 +3109,7 @@ async function submitPdfDeliveries() {
   const rows      = tbody.querySelectorAll('tr');
 
   const deliveries = [];
+  const uploadId   = crypto.randomUUID();
   rows.forEach((tr, idx) => {
     const product = tr.querySelector('.pdf-match-sel')?.value;
     if (!product) return;
@@ -3043,6 +3123,7 @@ async function submitPdfDeliveries() {
       product_name_raw:  product,
       quantity_received: row.totalUnits,
       notes:             orderNo ? `Invoice #${orderNo}` : 'PDF invoice',
+      upload_id:         uploadId,
     });
   });
 
