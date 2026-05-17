@@ -469,6 +469,45 @@
     }
     .deliv-batch-delete:hover { background: #f8717120; border-color: #f87171; }
 
+    /* ── Stock History tab ── */
+    .history-controls {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .history-month-pills { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+    .cost-edit-btn {
+      padding: 5px 12px; border: 1px solid #2a2a2a; border-radius: 6px;
+      background: transparent; color: #666666; font-size: 12px; cursor: pointer;
+      transition: all .2s; white-space: nowrap;
+    }
+    .cost-edit-btn:hover { border-color: #b0b3c6; color: #f0f0f0; }
+    .stock-history-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .stock-history-table th {
+      text-align: left; padding: 7px 10px; font-size: 11px; color: #666666;
+      font-weight: 600; border-bottom: 1px solid #1e1e1e; white-space: nowrap;
+    }
+    .stock-history-table td { padding: 7px 10px; border-bottom: 1px solid #141414; vertical-align: middle; }
+    .stock-history-table tr:last-child td { border-bottom: none; }
+    .stock-history-table tr:hover td { background: #141414; }
+    .stock-history-table .totals-row td {
+      border-top: 1px solid #2a2a2a; border-bottom: none;
+      font-weight: 600; color: #b0b3c6;
+    }
+    .net-pos { color: #4ade80; font-weight: 600; }
+    .net-neg { color: #f87171; font-weight: 600; }
+    .gp-cell { text-align: right; }
+    .no-cost-hint { color: #4a4f66; font-size: 11px; cursor: pointer; }
+    .no-cost-hint:hover { color: #e8c547; }
+    /* Cost edit modal */
+    .cost-edit-list { display: flex; flex-direction: column; gap: 10px; }
+    .cost-edit-row { display: flex; align-items: center; gap: 12px; }
+    .cost-edit-row label { flex: 1; font-size: 13px; color: #b0b3c6; }
+    .cost-edit-row input {
+      width: 90px; padding: 5px 8px; background: #141414; border: 1px solid #2a2a2a;
+      border-radius: 6px; color: #f0f0f0; font-size: 13px; text-align: right;
+    }
+    .cost-edit-row input:focus { outline: none; border-color: #e8c547; }
+
     /* ── Header border ── */
     .header { margin-bottom: 22px; border-bottom: 1px solid #1e1e1e; padding-bottom: 20px; }
 
@@ -583,6 +622,7 @@
     <button class="tab" data-tab="sellers">Top Sellers</button>
     <button class="tab" data-tab="trends">Trends</button>
     <button class="tab" data-tab="predict">Order Prediction <span class="tab-badge" id="predBadge" style="display:none">0</span></button>
+    <button class="tab" data-tab="history">Stock History</button>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════
@@ -781,7 +821,35 @@
 
   </div><!-- /predict section -->
 
+  <div class="section" data-tab="history">
+    <div class="history-controls">
+      <div id="historyMonthPills" class="history-month-pills"></div>
+      <button class="cost-edit-btn" id="openCostEditBtn">Edit cost prices</button>
+    </div>
+    <div id="historyContent"></div>
+  </div><!-- /history section -->
+
 </div><!-- /container -->
+
+<!-- ── Cost Price Edit Modal ── -->
+<div class="modal-overlay" id="costEditModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>Edit Cost Prices</h2>
+        <div class="modal-sub">Wholesale cost per unit (ex. VAT). Used to calculate GP%.</div>
+      </div>
+      <button class="modal-close" id="costEditClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="cost-edit-list" id="costEditList"></div>
+    </div>
+    <div class="modal-footer" style="display:flex;align-items:center;gap:10px">
+      <button class="banner-btn" id="costEditSaveBtn">Save</button>
+      <div class="form-status" id="costEditStatus"></div>
+    </div>
+  </div>
+</div>
 
 <!-- ── Log Delivery Modal ── -->
 <div class="modal-overlay" id="deliveryModal">
@@ -955,6 +1023,15 @@ async function sbDeleteBatch(table, column, value) {
   if (!res.ok) throw new Error(`DB delete failed (${table}): ${res.status}`);
 }
 
+async function sbPatch(table, id, updates) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
+    method:  'PATCH',
+    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
+    body:    JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`DB patch failed (${table}): ${res.status}`);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIG — categories, colours, and fallback price/brand maps
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1108,6 +1185,7 @@ let activeCharts    = {};
 let periodMode   = 'rolling';   // 'rolling' | 'month'
 let rollingWeeks = 4;
 let monthFilter  = null;        // 'YYYY-MM'
+let historyMonth = null;        // 'YYYY-MM' for Stock History tab
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DATE + PERIOD HELPERS
@@ -2221,6 +2299,195 @@ async function deleteDeliveryBatch(uploadId, rowId, count) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// STOCK HISTORY TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function renderStockHistory() {
+  const content  = document.getElementById('historyContent');
+  const pillsEl  = document.getElementById('historyMonthPills');
+  content.innerHTML = '<div style="text-align:center;color:#666666;padding:32px">Loading…</div>';
+
+  const deliveries = await loadDeliveries();
+  const paid = allRecords.filter(r => (r.state || 'Paid') !== 'Refunded' && r.category !== 'Merch');
+
+  // Union of months from deliveries + sales, descending
+  const delivMonths = deliveries.map(d => (d.delivery_date || '').slice(0, 7)).filter(Boolean);
+  const salesMonths  = paid.map(r => (r.date || '').slice(0, 7)).filter(Boolean);
+  const allMonths    = [...new Set([...delivMonths, ...salesMonths])].filter(Boolean).sort().reverse();
+
+  if (!allMonths.length) {
+    pillsEl.innerHTML = '';
+    content.innerHTML = '<div style="text-align:center;color:#4a4f66;padding:32px">No delivery or sales data yet.</div>';
+    return;
+  }
+
+  if (!historyMonth || !allMonths.includes(historyMonth)) historyMonth = allMonths[0];
+
+  // Month pills
+  pillsEl.innerHTML = allMonths.map(m => {
+    const [y, mo] = m.split('-').map(Number);
+    const label   = new Date(y, mo - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+    return `<button class="period-month-btn${m === historyMonth ? ' active' : ''}" data-hmonth="${m}">${label}</button>`;
+  }).join('');
+  pillsEl.querySelectorAll('[data-hmonth]').forEach(btn => {
+    btn.addEventListener('click', () => { historyMonth = btn.dataset.hmonth; renderStockHistory(); });
+  });
+
+  // Filter to selected month
+  const mDeliveries = deliveries.filter(d => (d.delivery_date || '').startsWith(historyMonth));
+  const mSales      = paid.filter(r => (r.date || '').startsWith(historyMonth));
+
+  const keys = new Set([
+    ...mDeliveries.map(d => d.product_name_raw),
+    ...mSales.map(r => r.productNameRaw),
+  ]);
+
+  if (!keys.size) {
+    content.innerHTML = '<div style="text-align:center;color:#4a4f66;padding:32px">No data for this month.</div>';
+    return;
+  }
+
+  const fmt  = n => n != null ? `£${n.toFixed(2)}` : '—';
+  const fmtN = n => n != null ? n.toFixed(1) + '%' : null;
+
+  const rows = [];
+  for (const key of keys) {
+    const info      = productLookup[key] || {};
+    const delivered = mDeliveries.filter(d => d.product_name_raw === key).reduce((s, d) => s + (d.quantity_received || 0), 0);
+    const sold      = mSales.filter(r => r.productNameRaw === key).reduce((s, r) => s + (r.quantity || 0), 0);
+    const net       = delivered - sold;
+    const revenue   = mSales.filter(r => r.productNameRaw === key).reduce((s, r) => s + (r.grossRevenue || 0), 0);
+    const costPrice = info.cost_price != null ? parseFloat(info.cost_price) : null;
+    const cogs      = costPrice != null ? sold * costPrice : null;
+    const gp        = (cogs != null && revenue > 0) ? (revenue - cogs) / revenue * 100 : null;
+    rows.push({ key, displayName: info.display_name || key, brand: info.brand || '', delivered, sold, net, revenue, cogs, gp });
+  }
+  rows.sort((a, b) => a.brand.localeCompare(b.brand) || a.displayName.localeCompare(b.displayName));
+
+  // Totals
+  const totDelivered = rows.reduce((s, r) => s + r.delivered, 0);
+  const totSold      = rows.reduce((s, r) => s + r.sold, 0);
+  const totNet       = totDelivered - totSold;
+  const totRevenue   = rows.reduce((s, r) => s + r.revenue, 0);
+  const totCogs      = rows.every(r => r.cogs != null) ? rows.reduce((s, r) => s + r.cogs, 0) : null;
+  const totGp        = (totCogs != null && totRevenue > 0) ? (totRevenue - totCogs) / totRevenue * 100 : null;
+
+  const netCell = (n) => {
+    if (n === 0) return '<td class="right">—</td>';
+    const cls = n > 0 ? 'net-pos' : 'net-neg';
+    return `<td class="right ${cls}">${n > 0 ? '+' : ''}${n}</td>`;
+  };
+
+  const gpCell = (gp, key) => {
+    if (gp != null) return `<td class="gp-cell right">${fmtN(gp)}</td>`;
+    return `<td class="gp-cell right"><span class="no-cost-hint" id="hint-${key.replace(/[^a-z0-9]/gi,'_')}" title="Click Edit cost prices to add">—</span></td>`;
+  };
+
+  const tableRows = rows.map(r => `<tr>
+    <td>${(r.displayName).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td>
+    <td class="right">${r.delivered || '—'}</td>
+    <td class="right">${r.sold || '—'}</td>
+    ${netCell(r.net)}
+    <td class="right">${r.revenue > 0 ? fmt(r.revenue) : '—'}</td>
+    <td class="right">${r.cogs != null ? fmt(r.cogs) : '<span class="no-cost-hint">—</span>'}</td>
+    ${gpCell(r.gp, r.key)}
+  </tr>`).join('');
+
+  const totGpStr = totGp != null ? fmtN(totGp) : '—';
+
+  content.innerHTML = `
+    <div class="table-card">
+      <table class="stock-history-table">
+        <thead><tr>
+          <th>Product</th>
+          <th class="right">Delivered</th>
+          <th class="right">Sold</th>
+          <th class="right">Net</th>
+          <th class="right">Revenue</th>
+          <th class="right">Cost (COGS)</th>
+          <th class="right">GP%</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+        <tfoot><tr class="totals-row">
+          <td>Total</td>
+          <td class="right">${totDelivered}</td>
+          <td class="right">${totSold}</td>
+          ${netCell(totNet)}
+          <td class="right">${fmt(totRevenue)}</td>
+          <td class="right">${totCogs != null ? fmt(totCogs) : '—'}</td>
+          <td class="right">${totGpStr}</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+}
+
+function openCostEditModal() {
+  const list = document.getElementById('costEditList');
+  const products = Object.values(productLookup)
+    .filter(p => p.category !== 'Merch' && p.active !== false)
+    .sort((a, b) => (a.display_name || a.product_name_raw).localeCompare(b.display_name || b.product_name_raw));
+
+  if (!products.length) {
+    list.innerHTML = '<div style="color:#666666;font-size:13px">No cafe products found in the product lookup.</div>';
+  } else {
+    list.innerHTML = products.map(p => {
+      const name = (p.display_name || p.product_name_raw).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      const val  = p.cost_price != null ? parseFloat(p.cost_price).toFixed(2) : '';
+      return `<div class="cost-edit-row">
+        <label>${name}</label>
+        <input type="number" step="0.01" min="0" placeholder="0.00"
+          data-id="${p.id}" data-orig="${val}" value="${val}">
+      </div>`;
+    }).join('');
+  }
+
+  document.getElementById('costEditStatus').textContent = '';
+  document.getElementById('costEditModal').classList.add('open');
+}
+
+async function saveCostPrices() {
+  const inputs = document.querySelectorAll('#costEditList input[data-id]');
+  const status = document.getElementById('costEditStatus');
+  const btn    = document.getElementById('costEditSaveBtn');
+
+  const changed = [...inputs].filter(inp => inp.value !== inp.dataset.orig && inp.dataset.id);
+  if (!changed.length) {
+    document.getElementById('costEditModal').classList.remove('open');
+    return;
+  }
+
+  status.style.color = '#666666';
+  status.textContent = `Saving ${changed.length} price${changed.length > 1 ? 's' : ''}…`;
+  btn.disabled = true;
+
+  let saved = 0, failed = 0;
+  for (const inp of changed) {
+    const val = inp.value === '' ? null : parseFloat(inp.value);
+    try {
+      await sbPatch('shop_product_lookup', inp.dataset.id, { cost_price: val });
+      saved++;
+    } catch(e) {
+      failed++;
+      console.warn('Cost price save failed:', e);
+    }
+  }
+
+  if (failed === 0) {
+    status.style.color = '#4ade80';
+    status.textContent = `✓ ${saved} price${saved > 1 ? 's' : ''} saved.`;
+    await loadProductLookup();
+    setTimeout(() => {
+      document.getElementById('costEditModal').classList.remove('open');
+      renderStockHistory();
+    }, 800);
+  } else {
+    status.style.color = '#f87171';
+    status.textContent = `${saved} saved, ${failed} failed.`;
+  }
+  btn.disabled = false;
+}
+
 async function renderOrderPrediction() {
   const tbody   = document.getElementById('predTbody');
   const metaEl  = document.getElementById('predMeta');
@@ -2435,6 +2702,7 @@ function renderAll() {
   }
   if (activeTab === 'trends') renderTrends();
   if (activeTab === 'predict') renderOrderPrediction();
+  if (activeTab === 'history') renderStockHistory();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3277,6 +3545,14 @@ async function init() {
   document.getElementById('deliveryModal').addEventListener('click', e => {
     if (e.target === document.getElementById('deliveryModal')) closeDeliveryModal();
   });
+
+  // ── Cost price edit modal ──
+  document.getElementById('openCostEditBtn').addEventListener('click', openCostEditModal);
+  document.getElementById('costEditClose').addEventListener('click', () => document.getElementById('costEditModal').classList.remove('open'));
+  document.getElementById('costEditModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('costEditModal')) document.getElementById('costEditModal').classList.remove('open');
+  });
+  document.getElementById('costEditSaveBtn').addEventListener('click', saveCostPrices);
 
   // Step 1: mode selection
   document.getElementById('modePdfCard').addEventListener('click', () => showDeliveryStep('pdf'));
