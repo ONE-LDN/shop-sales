@@ -498,15 +498,19 @@
     .gp-cell { text-align: right; }
     .no-cost-hint { color: #4a4f66; font-size: 11px; cursor: pointer; }
     .no-cost-hint:hover { color: #e8c547; }
+    /* Stock Action Tracker */
+    .tracker-empty { padding: 14px 0; color: #4a4f66; font-size: 13px; }
     /* Cost edit modal */
     .cost-edit-list { display: flex; flex-direction: column; gap: 10px; }
-    .cost-edit-row { display: flex; align-items: center; gap: 12px; }
+    .cost-edit-row { display: flex; align-items: center; gap: 10px; }
     .cost-edit-row label { flex: 1; font-size: 13px; color: #b0b3c6; }
     .cost-edit-row input {
-      width: 90px; padding: 5px 8px; background: #141414; border: 1px solid #2a2a2a;
+      width: 80px; padding: 5px 8px; background: #141414; border: 1px solid #2a2a2a;
       border-radius: 6px; color: #f0f0f0; font-size: 13px; text-align: right;
     }
     .cost-edit-row input:focus { outline: none; border-color: #e8c547; }
+    .cost-edit-col-hdr { display: flex; justify-content: flex-end; gap: 10px; padding: 0 0 4px; }
+    .cost-edit-col-hdr span { width: 80px; font-size: 11px; color: #4a4f66; text-align: right; }
 
     /* ── Header border ── */
     .header { margin-bottom: 22px; border-bottom: 1px solid #1e1e1e; padding-bottom: 20px; }
@@ -618,7 +622,7 @@
 
   <!-- ── Tabs ── -->
   <div class="tabs">
-    <button class="tab active" data-tab="summary">Weekly Summary</button>
+    <button class="tab active" data-tab="summary">Overview</button>
     <button class="tab" data-tab="sellers">Top Sellers</button>
     <button class="tab" data-tab="trends">Trends</button>
     <button class="tab" data-tab="predict">Order Prediction <span class="tab-badge" id="predBadge" style="display:none">0</span></button>
@@ -626,7 +630,7 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════════
-       TAB: WEEKLY SUMMARY
+       TAB: OVERVIEW
        ══════════════════════════════════════════════════════════ -->
   <div class="section active" data-tab="summary">
     <div id="summaryWarn"></div>
@@ -634,12 +638,8 @@
       <strong>⚠ Refunds in this period</strong>
       <span id="refundCalloutText"></span>
     </div>
-    <div class="stock-alert-banner" id="stockAlertBanner" style="display:none">
-      <strong>⚠ Order needed now:</strong>
-      <span class="alert-items" id="stockAlertItems"></span>
-      <button onclick="goToOrderPrediction('order-now')">View all →</button>
-    </div>
     <div class="kpi-row" id="summaryKPIs"></div>
+    <div id="stockTrackerSection"></div>
     <div class="chart-row">
       <div class="chart-card">
         <div class="chart-title">Weekly Revenue (Paid)</div>
@@ -847,8 +847,8 @@
   <div class="modal">
     <div class="modal-header">
       <div>
-        <h2>Edit Cost Prices</h2>
-        <div class="modal-sub">Wholesale cost per unit (ex. VAT). Used to calculate GP%.</div>
+        <h2>Edit Costs &amp; Pack Sizes</h2>
+        <div class="modal-sub">Cost per unit (ex. VAT) for GP%. Pack size = units per case/pack for order tracker.</div>
       </div>
       <button class="modal-close" id="costEditClose">✕</button>
     </div>
@@ -1652,7 +1652,7 @@ function showUnmatchedWarn(containerId) {
 
 // ── Stock flag helpers (used by Summary KPI cards + Order Prediction badge) ──
 
-function computeStockFlags(deliveries) {
+function computeStockDetails(deliveries) {
   const VELOCITY_WEEKS = 4;
   const paid     = allRecords.filter(r => (r.state || 'Paid') !== 'Refunded');
   const allWeeks = getWeekKeys(paid);
@@ -1662,7 +1662,6 @@ function computeStockFlags(deliveries) {
 
   const velMap = {};
   for (const r of velRecs) {
-    if (r.category === 'Merch') continue;
     velMap[r.productNameRaw] = (velMap[r.productNameRaw] || 0) + r.quantity;
   }
 
@@ -1675,36 +1674,66 @@ function computeStockFlags(deliveries) {
   }
 
   const allKeys = new Set([...Object.keys(velMap), ...Object.keys(delivMap)]);
-  const orderNow = [], orderSoon = [];
+  const rows = [];
 
   for (const key of allKeys) {
     const info = productLookup[key] || {};
     const cat  = info.category || getFallbackCategory(key);
-    if (cat === 'Merch' || isExcludedFromPred(key, cat)) continue;
+    if (isExcludedFromPred(key, cat)) continue;
     const dInfo = delivMap[key];
-    if (!dInfo) continue; // no-data products don't count for alert
+    if (!dInfo) continue;
 
+    const isMerch    = cat === 'Merch';
     const avgPerWeek = (velMap[key] || 0) / nWeeks;
     const soldSince  = paid.filter(r => r.productNameRaw === key && r.date.slice(0,10) >= dInfo.lastDelivDate)
                            .reduce((s, r) => s + r.quantity, 0);
     const estStock   = Math.max(0, dInfo.lastDelivQty - soldSince);
     const minStock   = info.min_stock_units ?? null;
 
-    let flag;
+    let flag, flagOrder;
     if (minStock !== null && estStock < minStock) {
-      flag = 'order-now';
+      flag = 'order-now'; flagOrder = 0;
     } else if (avgPerWeek === 0) {
-      flag = 'sufficient';
+      flag = 'sufficient'; flagOrder = 2;
     } else {
       const coversDays = Math.round((estStock / avgPerWeek) * 7);
-      flag = coversDays > 14 ? 'sufficient' : coversDays >= 7 ? 'order-soon' : 'order-now';
+      if (coversDays > 14)    { flag = 'sufficient'; flagOrder = 2; }
+      else if (coversDays >= 7) { flag = 'order-soon'; flagOrder = 1; }
+      else                      { flag = 'order-now';  flagOrder = 0; }
     }
 
-    const name = info.display_name || key;
-    if (flag === 'order-now') orderNow.push(name);
-    else if (flag === 'order-soon') orderSoon.push(name);
+    // Qty needed: 1 month (4wk) for cafe, 2 months (8wk) for merch
+    const cycleWeeks  = isMerch ? 8 : 4;
+    const qtyRequired = Math.max(0, Math.ceil((avgPerWeek * cycleWeeks) - estStock));
+    const packSize    = info.pack_size ?? null;
+    const packQty     = packSize && qtyRequired > 0 ? Math.ceil(qtyRequired / packSize) : null;
+    const costPrice   = info.cost_price != null ? parseFloat(info.cost_price) : null;
+    const estCost     = costPrice !== null && qtyRequired > 0 ? costPrice * qtyRequired : null;
+
+    rows.push({
+      key,
+      displayName: info.display_name || key,
+      category:    cat,
+      brand:       info.brand || getFallbackBrand(key, cat),
+      avgPerWeek,
+      estStock,
+      qtyRequired,
+      packSize,
+      packQty,
+      costPrice,
+      estCost,
+      flag,
+      flagOrder,
+    });
   }
 
+  return rows;
+}
+
+function computeStockFlags(deliveries) {
+  const rows     = computeStockDetails(deliveries);
+  const orderNow  = rows.filter(r => r.flag === 'order-now').map(r => r.displayName);
+  const orderSoon = rows.filter(r => r.flag === 'order-soon').map(r => r.displayName);
   return { orderNow, orderSoon };
 }
 
@@ -1783,23 +1812,63 @@ function renderSummary() {
       <div class="kpi-sub">within 14 days at velocity</div>
     </div>`;
 
-  // Async: populate stock KPI cards + alert banner
+  // Async: populate stock KPI counts + Stock Action Tracker
   loadDeliveries().then(deliveries => {
-    const { orderNow, orderSoon } = computeStockFlags(deliveries);
+    const details   = computeStockDetails(deliveries);
+    const orderNow  = details.filter(r => r.flag === 'order-now');
+    const orderSoon = details.filter(r => r.flag === 'order-soon');
+
     const onEl = document.getElementById('orderNowCount');
     const osEl = document.getElementById('orderSoonCount');
     if (onEl) onEl.textContent = orderNow.length || '0';
     if (osEl) osEl.textContent = orderSoon.length || '0';
-    const banner  = document.getElementById('stockAlertBanner');
-    const itemsEl = document.getElementById('stockAlertItems');
-    if (banner && itemsEl) {
-      if (orderNow.length > 0) {
-        itemsEl.textContent = orderNow.slice(0,5).join(', ') + (orderNow.length > 5 ? ` +${orderNow.length - 5} more` : '');
-        banner.style.display = '';
-      } else {
-        banner.style.display = 'none';
-      }
+
+    const trackerEl = document.getElementById('stockTrackerSection');
+    if (!trackerEl) return;
+
+    const urgent = [...orderNow, ...orderSoon]
+      .sort((a, b) => a.flagOrder - b.flagOrder || b.avgPerWeek - a.avgPerWeek);
+
+    if (!urgent.length) {
+      trackerEl.innerHTML = '<div class="tracker-empty">✓ All stock levels OK</div>';
+      return;
     }
+
+    trackerEl.innerHTML = `
+      <div class="table-card" style="margin-top:20px">
+        <div class="chart-title" style="padding:14px 18px 10px;display:flex;align-items:baseline;gap:10px">
+          Stock Action Tracker
+          <span style="font-size:11px;color:#666666;font-weight:400">urgency · velocity</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Flag</th>
+              <th>Product</th>
+              <th>Category</th>
+              <th class="right">Qty Req.</th>
+              <th class="right">Qty (Pack)</th>
+              <th class="right">Est. Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${urgent.map(r => `
+              <tr style="cursor:pointer" onclick="goToOrderPrediction('${r.flag}')">
+                <td style="white-space:nowrap">
+                  ${r.flag === 'order-now' ? '🔴' : '🟡'}
+                  <span style="font-size:11px;color:${r.flag === 'order-now' ? '#f87171' : '#e8c547'}">
+                    ${r.flag === 'order-now' ? 'Order Now' : 'Order Soon'}
+                  </span>
+                </td>
+                <td style="font-weight:600">${r.displayName}</td>
+                <td>${catBadge(r.category)}</td>
+                <td class="right">${r.qtyRequired > 0 ? r.qtyRequired : '—'}</td>
+                <td class="right">${r.packQty !== null ? r.packQty + ' pk' : '—'}</td>
+                <td class="right">${r.estCost !== null ? fmtCurrency(r.estCost) : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
   }).catch(() => {});
 
   // Weekly revenue bar chart
@@ -2163,7 +2232,8 @@ function renderTrends() {
 // ORDER PREDICTION TAB
 // ═══════════════════════════════════════════════════════════════════════════
 
-let allDeliveries = null; // lazy-loaded cache
+let allDeliveries    = null; // lazy-loaded cache
+let invoiceAliases   = null; // invoice_name → product_name_raw
 
 async function loadDeliveries(force = false) {
   if (allDeliveries !== null && !force) return allDeliveries;
@@ -2175,6 +2245,30 @@ async function loadDeliveries(force = false) {
     allDeliveries = [];
   }
   return allDeliveries;
+}
+
+async function loadInvoiceAliases(force = false) {
+  if (invoiceAliases !== null && !force) return invoiceAliases;
+  try {
+    const data = await sbGet('shop_invoice_aliases', 'select=invoice_name,product_name_raw');
+    invoiceAliases = {};
+    if (Array.isArray(data)) data.forEach(r => { invoiceAliases[r.invoice_name] = r.product_name_raw; });
+  } catch(e) {
+    console.warn('Could not load invoice aliases', e);
+    invoiceAliases = {};
+  }
+  return invoiceAliases;
+}
+
+async function saveInvoiceAliases(pairs) {
+  // pairs: [{ invoice_name, product_name_raw, supplier }]
+  if (!pairs.length) return;
+  try {
+    await sbUpsert('shop_invoice_aliases', pairs, 'invoice_name', 'merge-duplicates');
+    if (invoiceAliases) pairs.forEach(p => { invoiceAliases[p.invoice_name] = p.product_name_raw; });
+  } catch(e) {
+    console.warn('Could not save invoice aliases', e);
+  }
 }
 
 // ── Delivery Log modal ────────────────────────────────────────────────────
@@ -2462,15 +2556,22 @@ function openCostEditModal() {
   if (!products.length) {
     list.innerHTML = '<div style="color:#666666;font-size:13px">No cafe products found in the product lookup.</div>';
   } else {
-    list.innerHTML = products.map(p => {
-      const name = (p.display_name || p.product_name_raw).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-      const val  = p.cost_price != null ? parseFloat(p.cost_price).toFixed(2) : '';
-      return `<div class="cost-edit-row">
-        <label>${name}</label>
-        <input type="number" step="0.01" min="0" placeholder="0.00"
-          data-id="${p.id}" data-orig="${val}" value="${val}">
-      </div>`;
-    }).join('');
+    list.innerHTML =
+      '<div class="cost-edit-col-hdr"><span>Cost £</span><span>Pack sz</span></div>' +
+      products.map(p => {
+        const name     = (p.display_name || p.product_name_raw).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+        const costVal  = p.cost_price  != null ? parseFloat(p.cost_price).toFixed(2) : '';
+        const packVal  = p.pack_size   != null ? parseInt(p.pack_size)               : '';
+        return `<div class="cost-edit-row">
+          <label>${name}</label>
+          <input type="number" step="0.01" min="0" placeholder="0.00"
+            data-key="${p.product_name_raw}" data-field="cost_price"
+            data-orig="${costVal}" value="${costVal}" title="Cost price £">
+          <input type="number" step="1" min="1" placeholder="—"
+            data-key="${p.product_name_raw}" data-field="pack_size"
+            data-orig="${packVal}" value="${packVal}" title="Units per pack / case">
+        </div>`;
+      }).join('');
   }
 
   document.getElementById('costEditStatus').textContent = '';
@@ -2478,36 +2579,45 @@ function openCostEditModal() {
 }
 
 async function saveCostPrices() {
-  const inputs = document.querySelectorAll('#costEditList input[data-id]');
+  const inputs = document.querySelectorAll('#costEditList input[data-key]');
   const status = document.getElementById('costEditStatus');
   const btn    = document.getElementById('costEditSaveBtn');
 
-  const changed = [...inputs].filter(inp => inp.value !== inp.dataset.orig && inp.dataset.id);
-  if (!changed.length) {
+  // Group changed inputs by product_name_raw
+  const changes = {};
+  for (const inp of inputs) {
+    if (inp.value === inp.dataset.orig) continue;
+    const key   = inp.dataset.key;
+    const field = inp.dataset.field;
+    if (!changes[key]) changes[key] = { product_name_raw: key };
+    changes[key][field] = inp.value === '' ? null : parseFloat(inp.value);
+  }
+
+  const toSave = Object.values(changes);
+  if (!toSave.length) {
     document.getElementById('costEditModal').classList.remove('open');
     return;
   }
 
   status.style.color = '#666666';
-  status.textContent = `Saving ${changed.length} price${changed.length > 1 ? 's' : ''}…`;
+  status.textContent = `Saving ${toSave.length} product${toSave.length > 1 ? 's' : ''}…`;
   btn.disabled = true;
 
   let saved = 0, failed = 0;
-  for (const inp of changed) {
-    const val = inp.value === '' ? null : parseFloat(inp.value);
+  for (const row of toSave) {
     try {
-      await sbPatch('shop_product_lookup', inp.dataset.id, { cost_price: val });
+      await sbUpsert('shop_product_lookup', row, 'product_name_raw', 'merge-duplicates');
+      if (productLookup[row.product_name_raw]) Object.assign(productLookup[row.product_name_raw], row);
       saved++;
     } catch(e) {
       failed++;
-      console.warn('Cost price save failed:', e);
+      console.warn('Product detail save failed:', e);
     }
   }
 
   if (failed === 0) {
     status.style.color = '#4ade80';
-    status.textContent = `✓ ${saved} price${saved > 1 ? 's' : ''} saved.`;
-    await loadProductLookup();
+    status.textContent = `✓ ${saved} product${saved > 1 ? 's' : ''} saved.`;
     setTimeout(() => {
       document.getElementById('costEditModal').classList.remove('open');
       renderStockHistory();
@@ -2748,6 +2858,12 @@ function getCafeProducts() {
     .sort((a, b) => (a.display_name || a.product_name_raw).localeCompare(b.display_name || b.product_name_raw));
 }
 
+function getMerchProducts() {
+  return Object.values(productLookup)
+    .filter(p => p.active !== false && p.category === 'Merch')
+    .sort((a, b) => (a.display_name || a.product_name_raw).localeCompare(b.display_name || b.product_name_raw));
+}
+
 function populateDeliveryProductSelect() {
   const sel = document.getElementById('deliveryProduct');
   const products = getCafeProducts();
@@ -2892,11 +3008,11 @@ function matchScore(a, b) {
 }
 
 // Find best matching product_name_raw from productLookup
-function fuzzyMatchProduct(matchName) {
+function fuzzyMatchProduct(matchName, isMerch = false) {
   const norm = normStr(matchName);
-  const cafeProducts = getCafeProducts();
+  const products = isMerch ? getMerchProducts() : getCafeProducts();
   let best = null, bestScore = 0;
-  for (const p of cafeProducts) {
+  for (const p of products) {
     const candidate = normStr(p.display_name || p.product_name_raw);
     const score = matchScore(norm, candidate);
     if (score > bestScore) { bestScore = score; best = p; }
@@ -2905,13 +3021,19 @@ function fuzzyMatchProduct(matchName) {
   return { product: best, score: bestScore };
 }
 
-// Parse date from invoice — "Order Date:22 January 2026" / "22/01/2026"
+// Parse date from invoice — "Order Date:22 January 2026" / "22/01/2026" / "Feb 24, 2026"
 function parseInvoiceDate(text) {
   const months = {january:1,february:2,march:3,april:4,may:5,june:6,
                   july:7,august:8,september:9,october:10,november:11,december:12,
                   jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
   let m;
-  // "Order Date:22 January 2026" or "22 January 2026" anywhere
+  // Tapstitch: "Date of issue: Feb 24, 2026" (Month Day, Year)
+  m = text.match(/date\s+of\s+issue\s*:?\s*([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/i);
+  if (m) {
+    const mo = months[m[1].toLowerCase()];
+    if (mo) return `${m[3]}-${String(mo).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`;
+  }
+  // Muscle Finesse: "Order Date:22 January 2026" or "22 January 2026"
   m = text.match(/Order\s*Date\s*:?\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/i);
   if (!m) m = text.match(/(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})/i);
   if (m) {
@@ -2925,8 +3047,16 @@ function parseInvoiceDate(text) {
 
 // Parse invoice order number
 function parseInvoiceOrderNo(text) {
-  const m = text.match(/Order\s*#\s*(\d{5,})/i);
-  return m ? m[1] : null;
+  let m;
+  m = text.match(/Order\s*#\s*(\d{5,})/i);               // Muscle Finesse
+  if (m) return m[1];
+  m = text.match(/Inovice\s*Number\s*:\s*(INV-[\w-]+)/i); // Tapstitch (with typo)
+  if (m) return m[1];
+  m = text.match(/Invoice\s*Number\s*:\s*(INV-[\w-]+)/i); // Tapstitch
+  if (m) return m[1];
+  m = text.match(/Order\s*Number\s*:\s*(\d{5,})/i);       // Tapstitch
+  if (m) return m[1];
+  return null;
 }
 
 // Main PDF text extraction (pdf.js)
@@ -3146,57 +3276,106 @@ function autoDetectSupplier(textLines) {
 // ── Tapstitch invoice parser ──────────────────────────────────────────────
 // Format: "Product Name Color/Size   UnitPrice(GBP)  Qty  Amount(GBP)"
 
+// Tapstitch invoice format (actual PDF layout):
+//   Product Name line:  "Vintage Washed Oversized Cotton T-Shirt"
+//   Variant+data line:  "Black/L £7.99 £4.51 6 £75.00"   (with service fee)
+//                   or: "Mild Apricot/M £18.25 2 £36.50"  (without service fee)
+//
+// The numbers align to the variant line's Y-coordinate in the PDF, so pdf.js
+// produces two consecutive lines per item: [productName, variant+prices].
 function parseTapstitchInvoice(lines) {
   const items = [];
-  let inItems = false;
+  let headerIdx = -1;
+  let hasServiceFee = false;
 
-  for (const line of lines) {
-    if (!inItems) {
-      if (/unit\s*price/i.test(line) && /quantity/i.test(line)) { inItems = true; }
-      continue;
+  for (let i = 0; i < lines.length; i++) {
+    if (/unit\s*price/i.test(lines[i]) && /quantity/i.test(lines[i])) {
+      headerIdx     = i;
+      hasServiceFee = /service\s*fee/i.test(lines[i]);
+      break;
     }
-    if (!line.trim()) continue;
-    if (/subtotal|^total|service\s*fee|shipping|tax|vat/i.test(line.trim())) continue;
+  }
+  if (headerIdx === -1) return items;
 
-    // Match: trailing "unitprice qty amount" — 3 numbers at end separated by whitespace
-    const m = line.match(/^(.+?)\s{2,}([\d.]+)\s+([\d]+)\s+([\d.]+)\s*$/);
-    if (!m) continue;
+  const SKIP_RE = /^(subtotal|total\b|total\s+gbp|product\s*cost|production\s*cost|service\s*fee|shipping|discount|tax|if\s*you\s*have|page\s*\d)/i;
 
-    const fullName  = m[1].trim();
-    const unitPrice = parseFloat(m[2]);
-    const qty       = parseInt(m[3]);
-    const amount    = parseFloat(m[4]);
-    if (!qty || qty < 1) continue;
+  // Variant line with prices — £ prefix required on monetary values
+  // With service fee:    "Black/L £7.99 £4.51 6 £75.00"
+  // Without service fee: "Mild Apricot/M £18.25 2 £36.50"
+  const DATA_FEE_RE  = /^(.+?)\s+£([\d.]+)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;
+  const DATA_NOFEE_RE = /^(.+?)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;
+  const DATA_RE = hasServiceFee ? DATA_FEE_RE : DATA_NOFEE_RE;
 
-    // Split on last "/" for size
-    const slashIdx = fullName.lastIndexOf('/');
-    let productName = fullName, size = '', colourway = '';
-    if (slashIdx !== -1) {
-      size = fullName.slice(slashIdx + 1).trim();
-      const beforeSlash = fullName.slice(0, slashIdx).trim();
-      const parts = beforeSlash.split(/\s+/);
-      colourway = parts.pop() || '';
-      productName = parts.join(' ');
+  let i = headerIdx + 1;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    if (!line || SKIP_RE.test(line)) { i++; continue; }
+
+    const dm = line.match(DATA_RE);
+    if (dm) {
+      // Extract prices
+      const unitPrice = parseFloat(dm[2]);
+      const qty       = hasServiceFee ? parseInt(dm[4]) : parseInt(dm[3]);
+      const amount    = hasServiceFee ? parseFloat(dm[5]) : parseFloat(dm[4]);
+      if (!qty || qty < 1) { i++; continue; }
+
+      const captured = dm[1].trim(); // either "Black/L" (variant) or product name
+
+      // Determine layout: if the previous line (already stepped over) has no £ and
+      // captured contains "/" → Pattern A: prev=productName, captured=variant
+      const prevLine       = i > headerIdx + 1 ? lines[i - 1].trim() : '';
+      const prevIsNameLine = prevLine && !/£/.test(prevLine) && !SKIP_RE.test(prevLine);
+      const capturedHasSep = /\//.test(captured);
+
+      let productName, colourway, size;
+
+      if (prevIsNameLine && capturedHasSep) {
+        // Pattern A: productName on previous line, "Colour/Size" in captured
+        productName     = prevLine;
+        const slashIdx  = captured.lastIndexOf('/');
+        colourway       = captured.slice(0, slashIdx).trim();
+        size            = captured.slice(slashIdx + 1).trim();
+        i++;
+      } else {
+        // Pattern B: product+prices on this line, variant on next
+        productName     = captured;
+        const nextLine  = (lines[i + 1] || '').trim();
+        const isVariant = nextLine && /\//.test(nextLine) && !/£/.test(nextLine) && !SKIP_RE.test(nextLine);
+        if (isVariant) {
+          const slashIdx = nextLine.lastIndexOf('/');
+          colourway      = nextLine.slice(0, slashIdx).trim();
+          size           = nextLine.slice(slashIdx + 1).trim();
+          i += 2;
+        } else {
+          colourway = ''; size = '';
+          i++;
+        }
+      }
+
+      const variantStr  = [colourway, size].filter(Boolean).join(' / ') || null;
+      const invoiceName = variantStr
+        ? `${productName} ${colourway}${colourway && size ? '/' : ''}${size}`
+        : productName;
+
+      items.push({
+        invoiceName,
+        baseDisplay:  productName,
+        variant:      variantStr,
+        packStr:      '1',
+        packSize:     1,
+        volume_ml:    null,
+        pricePerCase: unitPrice,
+        orderedQty:   qty,
+        shippedQty:   qty,
+        totalUnits:   qty,
+        subtotal:     amount,
+        matchName:    invoiceName,
+        supplier:     'tapstitch',
+        _isMerch:     true,
+      });
+    } else {
+      i++;
     }
-
-    const variantStr = [colourway, size].filter(Boolean).join(' / ') || null;
-
-    items.push({
-      invoiceName: fullName,
-      baseDisplay: productName,
-      variant: variantStr,
-      packStr: '1',
-      packSize: 1,
-      volume_ml: null,
-      pricePerCase: unitPrice,
-      orderedQty: qty,
-      shippedQty: qty,
-      totalUnits: qty,
-      subtotal: amount,
-      matchName: fullName,
-      supplier: 'tapstitch',
-      _isMerch: true,
-    });
   }
   return items;
 }
@@ -3287,8 +3466,12 @@ async function handleInvoicePdfs(files) {
     const invoiceMetas = [];
 
     for (const file of validFiles) {
-      const text  = await parseInvoicePDF(file);
-      const items = extractInvoiceItems(text);
+      const text     = await parseInvoicePDF(file);
+      const lines    = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const supplier = autoDetectSupplier(lines);
+      const items    = supplier === 'tapstitch'
+        ? parseTapstitchInvoice(lines)
+        : extractInvoiceItems(text);
       const date  = parseInvoiceDate(text);
       const order = parseInvoiceOrderNo(text);
 
@@ -3316,6 +3499,7 @@ async function handleInvoicePdfs(files) {
       return;
     }
 
+    await loadInvoiceAliases();
     renderPdfReviewTable(allItems, invoiceMetas);
 
   } catch(e) {
@@ -3341,22 +3525,39 @@ function renderPdfReviewTable(items, invoiceMetas) {
     meta.innerHTML = `${m.order ? 'Invoice <strong>#' + m.order + '</strong>' : ''} · Date: <strong>${m.date || 'unknown'}</strong> · <strong>${items.length}</strong> line items`;
   }
 
-  const cafeProducts = getCafeProducts();
-  const optionsHtml = '<option value="">— skip —</option>' +
-    cafeProducts.map(p =>
+  const cafeProducts  = getCafeProducts();
+  const merchProducts = getMerchProducts();
+  const buildOpts = products => '<option value="">— skip —</option>' +
+    products.map(p =>
       `<option value="${p.product_name_raw}">${p.display_name || p.product_name_raw}</option>`
     ).join('');
+  const cafeOptsHtml  = buildOpts(cafeProducts);
+  const merchOptsHtml = buildOpts(merchProducts);
 
   const tbody = document.getElementById('pdfReviewBody');
   tbody.innerHTML = '';
   window._pdfInvoiceRows = items.map(i => Object.assign({}, i));
 
+  const aliases = invoiceAliases || {};
+
   items.forEach((item, idx) => {
-    const { product, score } = fuzzyMatchProduct(item.matchName);
-    const matchClass  = score >= 0.75 ? 'match-good' : score >= 0.45 ? 'match-warn' : 'match-none';
-    const matchLabel  = score >= 0.75 ? '✓' : score >= 0.45 ? '~' : '?';
-    const selectedVal = score >= 0.45 && product ? product.product_name_raw : '';
-    const opts        = optionsHtml.replace(`value="${selectedVal}"`, `value="${selectedVal}" selected`);
+    const isMerch     = !!item._isMerch;
+    const optionsHtml = isMerch ? merchOptsHtml : cafeOptsHtml;
+
+    // Alias match takes priority over fuzzy
+    const aliasMatch  = aliases[item.matchName] || null;
+    let selectedVal, matchClass, matchLabel;
+    if (aliasMatch) {
+      selectedVal = aliasMatch;
+      matchClass  = 'match-good';
+      matchLabel  = '★'; // saved alias
+    } else {
+      const { product, score } = fuzzyMatchProduct(item.matchName, isMerch);
+      selectedVal = score >= 0.45 && product ? product.product_name_raw : '';
+      matchClass  = score >= 0.75 ? 'match-good' : score >= 0.45 ? 'match-warn' : 'match-none';
+      matchLabel  = score >= 0.75 ? '✓' : score >= 0.45 ? '~' : '?';
+    }
+    const opts = optionsHtml.replace(`value="${selectedVal}"`, `value="${selectedVal}" selected`);
 
     // Show invoice source column only when multiple invoices uploaded
     const invoiceCell = multiInvoice
@@ -3407,8 +3608,9 @@ async function submitPdfDeliveries() {
   const tbody     = document.getElementById('pdfReviewBody');
   const rows      = tbody.querySelectorAll('tr');
 
-  const deliveries = [];
-  const uploadId   = crypto.randomUUID();
+  const deliveries  = [];
+  const newAliases  = [];
+  const uploadId    = crypto.randomUUID();
   rows.forEach((tr, idx) => {
     const product = tr.querySelector('.pdf-match-sel')?.value;
     if (!product) return;
@@ -3424,6 +3626,15 @@ async function submitPdfDeliveries() {
       notes:             orderNo ? `Invoice #${orderNo}` : 'PDF invoice',
       upload_id:         uploadId,
     });
+    // Save alias so future uploads with the same invoice name auto-match
+    if (row.matchName) {
+      newAliases.push({
+        invoice_name:     row.matchName,
+        product_name_raw: product,
+        supplier:         row.supplier || null,
+        updated_at:       new Date().toISOString(),
+      });
+    }
   });
 
   if (!deliveries.length) {
@@ -3446,6 +3657,7 @@ async function submitPdfDeliveries() {
     status.style.color = '#4ade80';
     status.textContent = `✓ ${saved} deliveries logged.`;
     allDeliveries = null; // bust Order Prediction cache
+    await saveInvoiceAliases(newAliases); // persist product matches for next upload
   } else {
     status.style.color = '#e8c547';
     status.textContent = `${saved} logged, ${failed} failed — see console.`;
