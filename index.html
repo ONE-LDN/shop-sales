@@ -2163,7 +2163,8 @@ function renderTrends() {
 // ORDER PREDICTION TAB
 // ═══════════════════════════════════════════════════════════════════════════
 
-let allDeliveries = null; // lazy-loaded cache
+let allDeliveries    = null; // lazy-loaded cache
+let invoiceAliases   = null; // invoice_name → product_name_raw
 
 async function loadDeliveries(force = false) {
   if (allDeliveries !== null && !force) return allDeliveries;
@@ -2175,6 +2176,30 @@ async function loadDeliveries(force = false) {
     allDeliveries = [];
   }
   return allDeliveries;
+}
+
+async function loadInvoiceAliases(force = false) {
+  if (invoiceAliases !== null && !force) return invoiceAliases;
+  try {
+    const data = await sbGet('shop_invoice_aliases', 'select=invoice_name,product_name_raw');
+    invoiceAliases = {};
+    if (Array.isArray(data)) data.forEach(r => { invoiceAliases[r.invoice_name] = r.product_name_raw; });
+  } catch(e) {
+    console.warn('Could not load invoice aliases', e);
+    invoiceAliases = {};
+  }
+  return invoiceAliases;
+}
+
+async function saveInvoiceAliases(pairs) {
+  // pairs: [{ invoice_name, product_name_raw, supplier }]
+  if (!pairs.length) return;
+  try {
+    await sbUpsert('shop_invoice_aliases', pairs, 'invoice_name', 'merge-duplicates');
+    if (invoiceAliases) pairs.forEach(p => { invoiceAliases[p.invoice_name] = p.product_name_raw; });
+  } catch(e) {
+    console.warn('Could not save invoice aliases', e);
+  }
 }
 
 // ── Delivery Log modal ────────────────────────────────────────────────────
@@ -3389,6 +3414,7 @@ async function handleInvoicePdfs(files) {
       return;
     }
 
+    await loadInvoiceAliases();
     renderPdfReviewTable(allItems, invoiceMetas);
 
   } catch(e) {
@@ -3427,14 +3453,26 @@ function renderPdfReviewTable(items, invoiceMetas) {
   tbody.innerHTML = '';
   window._pdfInvoiceRows = items.map(i => Object.assign({}, i));
 
+  const aliases = invoiceAliases || {};
+
   items.forEach((item, idx) => {
     const isMerch     = !!item._isMerch;
     const optionsHtml = isMerch ? merchOptsHtml : cafeOptsHtml;
-    const { product, score } = fuzzyMatchProduct(item.matchName, isMerch);
-    const matchClass  = score >= 0.75 ? 'match-good' : score >= 0.45 ? 'match-warn' : 'match-none';
-    const matchLabel  = score >= 0.75 ? '✓' : score >= 0.45 ? '~' : '?';
-    const selectedVal = score >= 0.45 && product ? product.product_name_raw : '';
-    const opts        = optionsHtml.replace(`value="${selectedVal}"`, `value="${selectedVal}" selected`);
+
+    // Alias match takes priority over fuzzy
+    const aliasMatch  = aliases[item.matchName] || null;
+    let selectedVal, matchClass, matchLabel;
+    if (aliasMatch) {
+      selectedVal = aliasMatch;
+      matchClass  = 'match-good';
+      matchLabel  = '★'; // saved alias
+    } else {
+      const { product, score } = fuzzyMatchProduct(item.matchName, isMerch);
+      selectedVal = score >= 0.45 && product ? product.product_name_raw : '';
+      matchClass  = score >= 0.75 ? 'match-good' : score >= 0.45 ? 'match-warn' : 'match-none';
+      matchLabel  = score >= 0.75 ? '✓' : score >= 0.45 ? '~' : '?';
+    }
+    const opts = optionsHtml.replace(`value="${selectedVal}"`, `value="${selectedVal}" selected`);
 
     // Show invoice source column only when multiple invoices uploaded
     const invoiceCell = multiInvoice
@@ -3485,8 +3523,9 @@ async function submitPdfDeliveries() {
   const tbody     = document.getElementById('pdfReviewBody');
   const rows      = tbody.querySelectorAll('tr');
 
-  const deliveries = [];
-  const uploadId   = crypto.randomUUID();
+  const deliveries  = [];
+  const newAliases  = [];
+  const uploadId    = crypto.randomUUID();
   rows.forEach((tr, idx) => {
     const product = tr.querySelector('.pdf-match-sel')?.value;
     if (!product) return;
@@ -3502,6 +3541,15 @@ async function submitPdfDeliveries() {
       notes:             orderNo ? `Invoice #${orderNo}` : 'PDF invoice',
       upload_id:         uploadId,
     });
+    // Save alias so future uploads with the same invoice name auto-match
+    if (row.matchName) {
+      newAliases.push({
+        invoice_name:     row.matchName,
+        product_name_raw: product,
+        supplier:         row.supplier || null,
+        updated_at:       new Date().toISOString(),
+      });
+    }
   });
 
   if (!deliveries.length) {
@@ -3524,6 +3572,7 @@ async function submitPdfDeliveries() {
     status.style.color = '#4ade80';
     status.textContent = `✓ ${saved} deliveries logged.`;
     allDeliveries = null; // bust Order Prediction cache
+    await saveInvoiceAliases(newAliases); // persist product matches for next upload
   } else {
     status.style.color = '#e8c547';
     status.textContent = `${saved} logged, ${failed} failed — see console.`;
