@@ -3013,14 +3013,29 @@ function matchScore(a, b) {
   return hits / Math.max(wordsA.size, wordsB.length);
 }
 
-// Find best matching product_name_raw from productLookup
-function fuzzyMatchProduct(matchName, isMerch = false) {
-  const norm = normStr(matchName);
+// Find best matching product_name_raw from productLookup.
+// For merch items, pass colourway/size hints to boost variant-level matching.
+// Combined score: 60% name similarity + 25% colourway match + 15% size match.
+function fuzzyMatchProduct(matchName, isMerch = false, hints = {}) {
+  const norm     = normStr(matchName);
   const products = isMerch ? getMerchProducts() : getCafeProducts();
+  const hColour  = hints.colourway ? normStr(hints.colourway) : null;
+  const hSize    = hints.size      ? normStr(hints.size)      : null;
+
   let best = null, bestScore = 0;
   for (const p of products) {
-    const candidate = normStr(p.display_name || p.product_name_raw);
-    const score = matchScore(norm, candidate);
+    const candidate    = normStr(p.display_name || p.product_name_raw);
+    let score          = matchScore(norm, candidate) * 0.6;
+
+    if (isMerch && (hColour || hSize)) {
+      const pColour = p.colourway ? normStr(p.colourway) : '';
+      const pSize   = p.size      ? normStr(p.size)      : '';
+      if (hColour) score += (pColour === hColour ? 0.25 : pColour.includes(hColour) || hColour.includes(pColour) ? 0.1 : 0);
+      if (hSize)   score += (pSize   === hSize   ? 0.15 : 0);
+    } else {
+      score = score / 0.6; // no hints: revert to pure name score
+    }
+
     if (score > bestScore) { bestScore = score; best = p; }
   }
   if (bestScore < 0.35) return { product: null, score: 0 };
@@ -3349,6 +3364,8 @@ function parseTapstitchInvoice(lines) {
         invoiceName,
         baseDisplay:  productName,
         variant:      variantStr,
+        colourway:    colourway || null,
+        size:         size      || null,
         packStr:      '1',
         packSize:     1,
         volume_ml:    null,
@@ -3515,12 +3532,17 @@ function renderPdfReviewTable(items, invoiceMetas) {
 
   const cafeProducts  = getCafeProducts();
   const merchProducts = getMerchProducts();
-  const buildOpts = products => '<option value="">— skip —</option>' +
-    products.map(p =>
+  const cafeOptsHtml  = '<option value="">— skip —</option>' +
+    cafeProducts.map(p =>
       `<option value="${p.product_name_raw}">${p.display_name || p.product_name_raw}</option>`
     ).join('');
-  const cafeOptsHtml  = buildOpts(cafeProducts);
-  const merchOptsHtml = buildOpts(merchProducts);
+  // Merch options include colour/size suffix to help variant selection
+  const merchOptsHtml = '<option value="">— skip —</option>' +
+    merchProducts.map(p => {
+      const label = p.display_name || p.product_name_raw;
+      const variant = [p.colourway, p.size].filter(Boolean).join(' / ');
+      return `<option value="${p.product_name_raw}">${label}${variant ? ' — ' + variant : ''}</option>`;
+    }).join('');
 
   const tbody = document.getElementById('pdfReviewBody');
   tbody.innerHTML = '';
@@ -3540,7 +3562,8 @@ function renderPdfReviewTable(items, invoiceMetas) {
       matchClass  = 'match-good';
       matchLabel  = '★'; // saved alias
     } else {
-      const { product, score } = fuzzyMatchProduct(item.matchName, isMerch);
+      const hints = isMerch ? { colourway: item.colourway, size: item.size } : {};
+      const { product, score } = fuzzyMatchProduct(item.matchName, isMerch, hints);
       selectedVal = score >= 0.45 && product ? product.product_name_raw : '';
       matchClass  = score >= 0.75 ? 'match-good' : score >= 0.45 ? 'match-warn' : 'match-none';
       matchLabel  = score >= 0.75 ? '✓' : score >= 0.45 ? '~' : '?';
