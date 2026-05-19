@@ -876,10 +876,15 @@
     <!-- Step 1: choose mode -->
     <div class="modal-body" id="deliveryStep1">
       <div class="delivery-mode-cards">
-        <div class="delivery-mode-card" id="modePdfCard">
-          <div class="mode-icon">📄</div>
-          <div class="mode-title">Upload Invoice PDF</div>
-          <div class="mode-desc">Upload a Muscle Finesse or Tapstitch invoice PDF, or an Amazon CSV — items auto-populated</div>
+        <div class="delivery-mode-card" id="modeMfCard">
+          <div class="mode-icon">📦</div>
+          <div class="mode-title">Muscle Finesse</div>
+          <div class="mode-desc">Upload a Muscle Finesse wholesale invoice PDF</div>
+        </div>
+        <div class="delivery-mode-card" id="modeTsCard">
+          <div class="mode-icon">👕</div>
+          <div class="mode-title">Tapstitch</div>
+          <div class="mode-desc">Upload a Tapstitch invoice PDF — merch items</div>
         </div>
         <div class="delivery-mode-card" id="modeManualCard">
           <div class="mode-icon">✏️</div>
@@ -2893,8 +2898,9 @@ function showDeliveryStep(step) {
     subEl.textContent   = 'How would you like to log this delivery?';
     inner.classList.remove('modal-wide');
   } else if (step === 'pdf') {
-    titleEl.textContent = 'Log Delivery — Upload Invoice';
-    subEl.textContent   = 'Upload invoice PDF or Amazon CSV — supplier auto-detected';
+    const supplierLabel = window._pdfSupplier === 'tapstitch' ? 'Tapstitch' : 'Muscle Finesse';
+    titleEl.textContent = `Log Delivery — ${supplierLabel} Invoice`;
+    subEl.textContent   = `Upload ${supplierLabel} invoice PDF`;
     inner.classList.add('modal-wide');
   } else if (step === 'manual') {
     titleEl.textContent = 'Log Delivery — Manual Entry';
@@ -3274,72 +3280,54 @@ function autoDetectSupplier(textLines) {
 }
 
 // ── Tapstitch invoice parser ──────────────────────────────────────────────
-// Format: "Product Name Color/Size   UnitPrice(GBP)  Qty  Amount(GBP)"
-
-// Tapstitch invoice format (actual PDF layout):
-//   Product Name line:  "Vintage Washed Oversized Cotton T-Shirt"
-//   Variant+data line:  "Black/L £7.99 £4.51 6 £75.00"   (with service fee)
-//                   or: "Mild Apricot/M £18.25 2 £36.50"  (without service fee)
-//
-// The numbers align to the variant line's Y-coordinate in the PDF, so pdf.js
-// produces two consecutive lines per item: [productName, variant+prices].
+// Scans all lines for price data — no header detection required.
+// Handles both invoice formats per-line:
+//   With service fee:    "Black/L £7.99 £4.51 6 £75.00"
+//   Without service fee: "Mild Apricot/M £18.25 2 £36.50"
+// Product name is on the line immediately before the data line.
 function parseTapstitchInvoice(lines) {
   const items = [];
-  let headerIdx = -1;
-  let hasServiceFee = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    if (/unit\s*price/i.test(lines[i]) && /quantity/i.test(lines[i])) {
-      headerIdx     = i;
-      hasServiceFee = /service\s*fee/i.test(lines[i]);
-      break;
-    }
-  }
-  if (headerIdx === -1) return items;
+  const SKIP_RE = /^(subtotal|total\b|total\s+gbp|product\s*cost|production\s*cost|service\s*fee|shipping\b|discount|tax|if\s*you\s*have|page\s*\d|from\b|bill\s*to|invoice|inovice|order\s*number|date\s*of\s*issue|tapstitch|dover|united\s*states|one\s*ldn|imperial\s*wharf|london|support@|item\s+unit|unit\s*price)/i;
 
-  const SKIP_RE = /^(subtotal|total\b|total\s+gbp|product\s*cost|production\s*cost|service\s*fee|shipping|discount|tax|if\s*you\s*have|page\s*\d)/i;
+  // Try service-fee pattern (4 money cols) first, then 3-col pattern
+  const FEE_RE   = /^(.+?)\s+£([\d.]+)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;  // 5 groups
+  const NOFEE_RE = /^(.+?)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;               // 4 groups
 
-  // Variant line with prices — £ prefix required on monetary values
-  // With service fee:    "Black/L £7.99 £4.51 6 £75.00"
-  // Without service fee: "Mild Apricot/M £18.25 2 £36.50"
-  const DATA_FEE_RE  = /^(.+?)\s+£([\d.]+)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;
-  const DATA_NOFEE_RE = /^(.+?)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;
-  const DATA_RE = hasServiceFee ? DATA_FEE_RE : DATA_NOFEE_RE;
-
-  let i = headerIdx + 1;
+  let i = 0;
   while (i < lines.length) {
     const line = lines[i].trim();
     if (!line || SKIP_RE.test(line)) { i++; continue; }
 
-    const dm = line.match(DATA_RE);
+    const dmFee   = line.match(FEE_RE);
+    const dm      = dmFee || line.match(NOFEE_RE);
+    const hasFee  = !!dmFee;
+
     if (dm) {
-      // Extract prices
       const unitPrice = parseFloat(dm[2]);
-      const qty       = hasServiceFee ? parseInt(dm[4]) : parseInt(dm[3]);
-      const amount    = hasServiceFee ? parseFloat(dm[5]) : parseFloat(dm[4]);
+      const qty       = hasFee ? parseInt(dm[4]) : parseInt(dm[3]);
+      const amount    = hasFee ? parseFloat(dm[5]) : parseFloat(dm[4]);
       if (!qty || qty < 1) { i++; continue; }
 
-      const captured = dm[1].trim(); // either "Black/L" (variant) or product name
+      const captured = dm[1].trim();
 
-      // Determine layout: if the previous line (already stepped over) has no £ and
-      // captured contains "/" → Pattern A: prev=productName, captured=variant
-      const prevLine       = i > headerIdx + 1 ? lines[i - 1].trim() : '';
-      const prevIsNameLine = prevLine && !/£/.test(prevLine) && !SKIP_RE.test(prevLine);
+      const prevLine       = i > 0 ? lines[i - 1].trim() : '';
+      const prevIsNameLine = prevLine && !/£/.test(prevLine) && !SKIP_RE.test(prevLine) && !/^\d/.test(prevLine);
       const capturedHasSep = /\//.test(captured);
 
       let productName, colourway, size;
 
       if (prevIsNameLine && capturedHasSep) {
-        // Pattern A: productName on previous line, "Colour/Size" in captured
-        productName     = prevLine;
-        const slashIdx  = captured.lastIndexOf('/');
-        colourway       = captured.slice(0, slashIdx).trim();
-        size            = captured.slice(slashIdx + 1).trim();
+        // Product name on previous line, "Colour/Size + prices" on this line
+        productName    = prevLine;
+        const slashIdx = captured.lastIndexOf('/');
+        colourway      = captured.slice(0, slashIdx).trim();
+        size           = captured.slice(slashIdx + 1).trim();
         i++;
       } else {
-        // Pattern B: product+prices on this line, variant on next
-        productName     = captured;
-        const nextLine  = (lines[i + 1] || '').trim();
+        // Product name is in captured, variant on next line
+        productName    = captured;
+        const nextLine = (lines[i + 1] || '').trim();
         const isVariant = nextLine && /\//.test(nextLine) && !/£/.test(nextLine) && !SKIP_RE.test(nextLine);
         if (isVariant) {
           const slashIdx = nextLine.lastIndexOf('/');
@@ -3468,7 +3456,7 @@ async function handleInvoicePdfs(files) {
     for (const file of validFiles) {
       const text     = await parseInvoicePDF(file);
       const lines    = text.split('\n').map(l => l.trim()).filter(Boolean);
-      const supplier = autoDetectSupplier(lines);
+      const supplier = window._pdfSupplier || 'muscle-finesse';
       const items    = supplier === 'tapstitch'
         ? parseTapstitchInvoice(lines)
         : extractInvoiceItems(text);
@@ -3803,7 +3791,9 @@ async function init() {
   document.getElementById('costEditSaveBtn').addEventListener('click', saveCostPrices);
 
   // Step 1: mode selection
-  document.getElementById('modePdfCard').addEventListener('click', () => showDeliveryStep('pdf'));
+  window._pdfSupplier = null;
+  document.getElementById('modeMfCard').addEventListener('click', () => { window._pdfSupplier = 'muscle-finesse'; showDeliveryStep('pdf'); });
+  document.getElementById('modeTsCard').addEventListener('click', () => { window._pdfSupplier = 'tapstitch';      showDeliveryStep('pdf'); });
   document.getElementById('modeManualCard').addEventListener('click', () => showDeliveryStep('manual'));
 
   // Back buttons
