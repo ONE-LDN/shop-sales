@@ -460,6 +460,8 @@
       background: #141414; border-bottom: 1px solid #1e1e1e; flex-wrap: wrap;
     }
     .deliv-group-date  { font-size: 12px; font-weight: 600; color: #b0b3c6; white-space: nowrap; }
+    .deliv-edit-date   { background: transparent; border: none; color: #666; cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
+    .deliv-edit-date:hover { color: #a78bfa; }
     .deliv-group-label { font-size: 11px; color: #666666; }
     .deliv-group-count { font-size: 11px; color: #4a4f66; }
     .deliv-batch-delete {
@@ -1041,6 +1043,15 @@ async function sbDeleteBatch(table, column, value) {
 
 async function sbPatch(table, id, updates) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
+    method:  'PATCH',
+    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
+    body:    JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`DB patch failed (${table}): ${res.status}`);
+}
+
+async function sbPatchWhere(table, filterKey, filterVal, updates) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filterKey}=eq.${encodeURIComponent(filterVal)}`, {
     method:  'PATCH',
     headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
     body:    JSON.stringify(updates),
@@ -2359,8 +2370,9 @@ async function renderDeliveryLog() {
     }).join('');
 
     return `<div class="deliv-group">
-      <div class="deliv-group-header">
+      <div class="deliv-group-header" data-date="${first.delivery_date || ''}" ${batchAttr}>
         <span class="deliv-group-date">${dateStr}</span>
+        <button class="deliv-edit-date" title="Edit date">✎</button>
         <span class="deliv-group-label">${esc(label)}</span>
         <span class="deliv-group-count">${count} item${count === 1 ? '' : 's'}</span>
         <button class="deliv-batch-delete" ${batchAttr} data-count="${count}">Delete delivery</button>
@@ -2386,6 +2398,9 @@ async function renderDeliveryLog() {
     btn.addEventListener('click', () =>
       deleteDeliveryBatch(btn.dataset.uploadId || null, btn.dataset.rowId || null, parseInt(btn.dataset.count))
     );
+  });
+  content.querySelectorAll('.deliv-edit-date').forEach(btn => {
+    btn.addEventListener('click', () => startEditDeliveryDate(btn));
   });
 }
 
@@ -2413,6 +2428,65 @@ async function deleteDeliveryBatch(uploadId, rowId, count) {
     renderDeliveryLog();
   } catch(e) {
     alert('Delete failed: ' + e.message);
+  }
+}
+
+function startEditDeliveryDate(editBtn) {
+  const header     = editBtn.closest('.deliv-group-header');
+  const dateSpan   = header.querySelector('.deliv-group-date');
+  const currentRaw = header.dataset.date || '';
+
+  // Swap date span + edit btn for an inline input
+  dateSpan.style.display  = 'none';
+  editBtn.style.display   = 'none';
+
+  const input = document.createElement('input');
+  input.type  = 'date';
+  input.value = currentRaw;
+  input.style.cssText = 'font-size:13px;padding:2px 6px;border-radius:4px;border:1px solid #555;background:#1a1d2e;color:#e0e2f0;margin-right:4px';
+
+  const saveBtn   = document.createElement('button');
+  saveBtn.textContent = '✓';
+  saveBtn.className   = 'banner-btn';
+  saveBtn.style.cssText = 'padding:2px 8px;font-size:12px;margin-right:4px';
+
+  const cancelBtn   = document.createElement('button');
+  cancelBtn.textContent = '✕';
+  cancelBtn.className   = 'banner-btn secondary';
+  cancelBtn.style.cssText = 'padding:2px 8px;font-size:12px';
+
+  header.insertBefore(input,     dateSpan.nextSibling);
+  header.insertBefore(saveBtn,   input.nextSibling);
+  header.insertBefore(cancelBtn, saveBtn.nextSibling);
+
+  cancelBtn.addEventListener('click', () => {
+    input.remove(); saveBtn.remove(); cancelBtn.remove();
+    dateSpan.style.display = '';
+    editBtn.style.display  = '';
+  });
+
+  saveBtn.addEventListener('click', () => saveDeliveryDate(header, input.value, dateSpan, editBtn, input, saveBtn, cancelBtn));
+}
+
+async function saveDeliveryDate(header, newDate, dateSpan, editBtn, input, saveBtn, cancelBtn) {
+  if (!newDate) return;
+  saveBtn.disabled = cancelBtn.disabled = true;
+  try {
+    if (header.dataset.uploadId) {
+      await sbPatchWhere('shop_deliveries', 'upload_id', header.dataset.uploadId, { delivery_date: newDate });
+    } else if (header.dataset.rowId) {
+      await sbPatch('shop_deliveries', header.dataset.rowId, { delivery_date: newDate });
+    }
+    allDeliveries = null;
+    input.remove(); saveBtn.remove(); cancelBtn.remove();
+    header.dataset.date = newDate;
+    const [y, m, d] = newDate.split('-');
+    dateSpan.textContent = `${d}/${m}/${y}`;
+    dateSpan.style.display = '';
+    editBtn.style.display  = '';
+  } catch(e) {
+    alert('Failed to update date: ' + e.message);
+    saveBtn.disabled = cancelBtn.disabled = false;
   }
 }
 
