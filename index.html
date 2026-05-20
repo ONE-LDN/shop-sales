@@ -3093,7 +3093,7 @@ function parseInvoiceOrderNo(text) {
 //   1. Bucketing items by Y coordinate (same line = within LINE_BUCKET units)
 //   2. Sorting lines top-to-bottom (Y descending in PDF coord space)
 //   3. Sorting items within each line left-to-right (X ascending)
-async function parseInvoicePDF(file) {
+async function parseInvoicePDF(file, lineBucket = 2) {
   if (!window.pdfjsLib) throw new Error('PDF.js not loaded');
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -3101,7 +3101,7 @@ async function parseInvoicePDF(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-  const LINE_BUCKET = 2; // y units tolerance for "same line"
+  const LINE_BUCKET = lineBucket; // y units tolerance for "same line"
   let fullText = '';
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -3478,9 +3478,10 @@ async function handleInvoicePdfs(files) {
     const invoiceMetas = [];
 
     for (const file of validFiles) {
-      const text     = await parseInvoicePDF(file);
-      const lines    = text.split('\n').map(l => l.trim()).filter(Boolean);
       const supplier = window._pdfSupplier || 'muscle-finesse';
+      // Tapstitch tables can have slight Y-offset between columns — use wider bucket
+      const text     = await parseInvoicePDF(file, supplier === 'tapstitch' ? 6 : 2);
+      const lines    = text.split('\n').map(l => l.trim()).filter(Boolean);
       const items    = supplier === 'tapstitch'
         ? parseTapstitchInvoice(lines)
         : extractInvoiceItems(text);
