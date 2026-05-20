@@ -1674,7 +1674,11 @@ function computeStockDetails(deliveries) {
   for (const d of deliveries) {
     const ex = delivMap[d.product_name_raw];
     if (!ex || d.delivery_date > ex.lastDelivDate) {
-      delivMap[d.product_name_raw] = { lastDelivQty: d.quantity_received, lastDelivDate: d.delivery_date };
+      delivMap[d.product_name_raw] = {
+        lastDelivQty:  d.quantity_received,
+        lastDelivDate: d.delivery_date,
+        lastUnitPrice: d.unit_price ?? null, // latest invoice price per unit
+      };
     }
   }
 
@@ -1712,7 +1716,10 @@ function computeStockDetails(deliveries) {
     const qtyRequired = Math.max(0, Math.ceil((avgPerWeek * cycleWeeks) - estStock));
     const packSize    = info.pack_size ?? null;
     const packQty     = packSize && qtyRequired > 0 ? Math.ceil(qtyRequired / packSize) : null;
-    const costPrice   = info.cost_price != null ? parseFloat(info.cost_price) : null;
+    // Cost: use manual cost_price if set, otherwise fall back to last invoice unit_price
+    const costPrice   = info.cost_price  != null ? parseFloat(info.cost_price)
+                      : dInfo?.lastUnitPrice != null ? parseFloat(dInfo.lastUnitPrice)
+                      : null;
     const estCost     = costPrice !== null && qtyRequired > 0 ? costPrice * qtyRequired : null;
 
     rows.push({
@@ -3536,13 +3543,32 @@ function renderPdfReviewTable(items, invoiceMetas) {
     cafeProducts.map(p =>
       `<option value="${p.product_name_raw}">${p.display_name || p.product_name_raw}</option>`
     ).join('');
-  // Merch options include colour/size suffix to help variant selection
-  const merchOptsHtml = '<option value="">— skip —</option>' +
-    merchProducts.map(p => {
-      const label = p.display_name || p.product_name_raw;
+
+  // Merch options grouped by product_type so variants of the same style are
+  // together. Each option shows "Display Name — Colour / Size".
+  const buildMerchOpts = (highlightColour, highlightSize) => {
+    const groups = {};
+    for (const p of merchProducts) {
+      const grp = p.product_type || p.collection || 'Merch';
+      if (!groups[grp]) groups[grp] = [];
+      const label   = p.display_name || p.product_name_raw;
       const variant = [p.colourway, p.size].filter(Boolean).join(' / ');
-      return `<option value="${p.product_name_raw}">${label}${variant ? ' — ' + variant : ''}</option>`;
-    }).join('');
+      const isMatch = (highlightColour && p.colourway && p.colourway.toLowerCase() === highlightColour.toLowerCase()) ||
+                      (highlightSize   && p.size      && p.size.toLowerCase()      === highlightSize.toLowerCase());
+      groups[grp].push({ p, label, variant, isMatch });
+    }
+    let html = '<option value="">— skip —</option>';
+    for (const [grpName, entries] of Object.entries(groups)) {
+      // Sort: colour+size matches first within each group
+      entries.sort((a, b) => (b.isMatch ? 1 : 0) - (a.isMatch ? 1 : 0));
+      html += `<optgroup label="${grpName}">`;
+      html += entries.map(({ p, label, variant }) =>
+        `<option value="${p.product_name_raw}">${label}${variant ? ' — ' + variant : ''}</option>`
+      ).join('');
+      html += '</optgroup>';
+    }
+    return html;
+  };
 
   const tbody = document.getElementById('pdfReviewBody');
   tbody.innerHTML = '';
@@ -3552,7 +3578,9 @@ function renderPdfReviewTable(items, invoiceMetas) {
 
   items.forEach((item, idx) => {
     const isMerch     = !!item._isMerch;
-    const optionsHtml = isMerch ? merchOptsHtml : cafeOptsHtml;
+    const optionsHtml = isMerch
+      ? buildMerchOpts(item.colourway, item.size)
+      : cafeOptsHtml;
 
     // Alias match takes priority over fuzzy
     const aliasMatch  = aliases[item.matchName] || null;
@@ -3634,6 +3662,7 @@ async function submitPdfDeliveries() {
       delivery_date:     date,
       product_name_raw:  product,
       quantity_received: row.totalUnits,
+      unit_price:        row.pricePerCase || null,
       notes:             orderNo ? `Invoice #${orderNo}` : 'PDF invoice',
       upload_id:         uploadId,
     });
