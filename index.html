@@ -3748,6 +3748,7 @@ function parseTapstitchInvoice(lines) {
   }
   console.debug('[Tapstitch] After join-pass: %d→%d lines', lines.length, joined.length);
 
+  const src = joined;
   let i = 0;
   while (i < src.length) {
     const line = src[i].trim();
