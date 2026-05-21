@@ -4175,6 +4175,7 @@ async function submitPdfDeliveries() {
       product_name_raw:  product,
       quantity_received: row.totalUnits,
       unit_price:        row.pricePerCase || null,
+      supplier:          row.supplier || null,
       notes:             orderNo ? `Invoice #${orderNo}` : 'PDF invoice',
       upload_id:         uploadId,
     });
@@ -4210,6 +4211,25 @@ async function submitPdfDeliveries() {
     status.textContent = `✓ ${saved} deliveries logged.`;
     allDeliveries = null; // bust Order Prediction cache
     await saveInvoiceAliases(newAliases); // persist product matches for next upload
+
+    // For merch (Tapstitch) items, write colourway/size back to product lookup
+    // so they appear in Order Prediction → Merch variant columns
+    const lookupUpdates = [];
+    rows.forEach((tr, idx) => {
+      const product = tr.querySelector('.pdf-match-sel')?.value;
+      if (!product) return;
+      const row = window._pdfInvoiceRows[idx];
+      if (!row || !row._isMerch) return;
+      if (!row.colourway && !row.size) return;
+      lookupUpdates.push({ product_name_raw: product, colourway: row.colourway || null, size: row.size || null });
+    });
+    for (const upd of lookupUpdates) {
+      try {
+        await sbUpsert('shop_product_lookup', upd, 'product_name_raw', 'merge-duplicates');
+        if (productLookup[upd.product_name_raw]) Object.assign(productLookup[upd.product_name_raw], upd);
+        else productLookup[upd.product_name_raw] = upd;
+      } catch(e) { console.warn('Lookup variant update failed:', e); }
+    }
   } else {
     status.style.color = '#e8c547';
     status.textContent = `${saved} logged, ${failed} failed — see console.`;
