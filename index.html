@@ -1781,9 +1781,12 @@ function computeStockDetails(deliveries) {
       flag = 'sufficient'; flagOrder = 2;
     } else {
       const coversDays = Math.round((estStock / avgPerWeek) * 7);
-      if (coversDays > 14)    { flag = 'sufficient'; flagOrder = 2; }
-      else if (coversDays >= 7) { flag = 'order-soon'; flagOrder = 1; }
-      else                      { flag = 'order-now';  flagOrder = 0; }
+      // Merch has longer lead time → wider thresholds (14 / 56 days vs 7 / 14 for cafe)
+      const soonThresh = isMerch ? 56 : 14;
+      const nowThresh  = isMerch ? 14 : 7;
+      if (coversDays > soonThresh)       { flag = 'sufficient'; flagOrder = 2; }
+      else if (coversDays >= nowThresh)  { flag = 'order-soon'; flagOrder = 1; }
+      else                               { flag = 'order-now';  flagOrder = 0; }
     }
 
     // Qty needed: 1 month (4wk) for cafe, 2 months (8wk) for merch
@@ -1824,18 +1827,20 @@ function computeStockFlags(deliveries) {
   return { orderNow, orderSoon };
 }
 
-function goToOrderPrediction(flag) {
+function goToOrderPrediction(flag, category) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   const predTab = document.querySelector('.tab[data-tab="predict"]');
   predTab?.classList.add('active');
   const predSection = document.querySelector('.section[data-tab="predict"]');
   predSection?.classList.add('active');
-  // Ensure the Cafe sub-tab is active (stock tracker links are cafe-specific)
-  predSection?.querySelectorAll('.sub-tab').forEach(t => t.classList.toggle('active', t.dataset.sub === 'pred-cafe'));
-  predSection?.querySelectorAll('.sub-section').forEach(s => s.classList.toggle('active', s.dataset.sub === 'pred-cafe'));
+  // Navigate to the correct sub-tab based on category
+  const targetSub = category === 'Merch' ? 'pred-merch' : 'pred-cafe';
+  predSection?.querySelectorAll('.sub-tab').forEach(t => t.classList.toggle('active', t.dataset.sub === targetSub));
+  predSection?.querySelectorAll('.sub-section').forEach(s => s.classList.toggle('active', s.dataset.sub === targetSub));
   if (flag) {
-    const sel = document.getElementById('predFlagFilter');
+    const filterId = category === 'Merch' ? 'predMerchFlagFilter' : 'predFlagFilter';
+    const sel = document.getElementById(filterId);
     if (sel) sel.value = flag;
   }
   renderOrderPrediction();
@@ -1944,7 +1949,7 @@ function renderSummary() {
           </thead>
           <tbody>
             ${urgent.map(r => `
-              <tr style="cursor:pointer" onclick="goToOrderPrediction('${r.flag}')">
+              <tr style="cursor:pointer" onclick="goToOrderPrediction('${r.flag}', '${r.category}')">
                 <td style="white-space:nowrap">
                   ${r.flag === 'order-now' ? '🔴' : '🟡'}
                   <span style="font-size:11px;color:${r.flag === 'order-now' ? '#f87171' : '#e8c547'}">
@@ -3722,12 +3727,30 @@ function parseTapstitchInvoice(lines) {
   const SKIP_RE = /^(subtotal|total\b|total\s+gbp|product\s*cost|production\s*cost|service\s*fee|shipping\b|discount|tax|if\s*you\s*have|page\s*\d|from\b|bill\s*to|invoice|inovice|order\s*number|date\s*of\s*issue|tapstitch|dover|united\s*states|imperial\s*wharf|london|support@|item\s+unit|unit\s*price)/i;
 
   // Try service-fee pattern (4 money cols) first, then 3-col pattern
-  const FEE_RE   = /^(.+?)\s+£([\d.]+)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;  // 5 groups
-  const NOFEE_RE = /^(.+?)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;               // 4 groups
+  const FEE_RE        = /^(.+?)\s+£([\d.]+)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;  // 5 groups
+  const NOFEE_RE      = /^(.+?)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;               // 4 groups
+  // Price-only line (no description prefix): "£unit [£fee] qty £total"
+  const PRICE_ONLY_RE = /^£[\d.]+(?:\s+£[\d.]+)?\s+\d+\s+£[\d.]+\s*$/;
+
+  // Pre-pass: if a description-only line is immediately followed by a price-only
+  // line, join them. This happens when PDF column Y-coordinates differ slightly
+  // so the variant text and its prices land in different Y-buckets.
+  const joined = [];
+  for (let j = 0; j < lines.length; j++) {
+    const cur  = lines[j].trim();
+    const next = (lines[j + 1] || '').trim();
+    if (cur && !SKIP_RE.test(cur) && !/£/.test(cur) && PRICE_ONLY_RE.test(next)) {
+      joined.push(cur + ' ' + next);
+      j++; // consume both lines
+    } else {
+      joined.push(cur);
+    }
+  }
+  console.debug('[Tapstitch] After join-pass: %d→%d lines', lines.length, joined.length);
 
   let i = 0;
-  while (i < lines.length) {
-    const line = lines[i].trim();
+  while (i < src.length) {
+    const line = src[i].trim();
     if (!line || SKIP_RE.test(line)) { i++; continue; }
 
     const dmFee   = line.match(FEE_RE);
@@ -3742,7 +3765,7 @@ function parseTapstitchInvoice(lines) {
 
       const captured = dm[1].trim();
 
-      const prevLine       = i > 0 ? lines[i - 1].trim() : '';
+      const prevLine       = i > 0 ? src[i - 1].trim() : '';
       const prevIsNameLine = prevLine && !/£/.test(prevLine) && !SKIP_RE.test(prevLine) && !/^\d/.test(prevLine);
       const capturedHasSep = /\//.test(captured);
 
@@ -3766,7 +3789,7 @@ function parseTapstitchInvoice(lines) {
       } else {
         // Product name is in captured, variant on next line
         productName    = captured;
-        const nextLine = (lines[i + 1] || '').trim();
+        const nextLine = (src[i + 1] || '').trim();
         const isVariant = nextLine && /\//.test(nextLine) && !/£/.test(nextLine) && !SKIP_RE.test(nextLine);
         if (isVariant) {
           const slashIdx = nextLine.lastIndexOf('/');
