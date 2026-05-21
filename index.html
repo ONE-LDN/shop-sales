@@ -636,6 +636,11 @@
        ══════════════════════════════════════════════════════════ -->
   <div class="section active" data-tab="summary">
     <div id="summaryWarn"></div>
+    <div class="sub-tabs" id="summarySegTabs" style="margin-bottom:10px">
+      <button class="sub-tab active" data-seg="all">All</button>
+      <button class="sub-tab" data-seg="cafe">Cafe</button>
+      <button class="sub-tab" data-seg="merch">Merch</button>
+    </div>
     <div class="refund-callout" id="refundCallout">
       <strong>⚠ Refunds in this period</strong>
       <span id="refundCalloutText"></span>
@@ -1277,6 +1282,7 @@ let rollingWeeks = 4;
 let monthFilter  = null;        // 'YYYY-MM'
 let historyMonth      = null;   // 'YYYY-MM' for Stock History → Cafe tab
 let historyMerchMonth = null;   // 'YYYY-MM' for Stock History → Merch tab
+let summarySegment    = 'all';  // 'all' | 'cafe' | 'merch' for Overview tab
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DATE + PERIOD HELPERS
@@ -1871,20 +1877,43 @@ function renderSummary() {
     return;
   }
 
-  const weeks      = getWeekKeys(paid);
+  const segPaid = summarySegment === 'cafe' ? paid.filter(r => CAFE_CATS.includes(r.category))
+                : summarySegment === 'merch' ? paid.filter(r => r.category === 'Merch')
+                : paid;
+
+  if (!segPaid.length) {
+    kpiEl.innerHTML = '';
+    emptyState('summaryKPIs', `No ${summarySegment} sales in the selected period`);
+    document.getElementById('stockTrackerSection').innerHTML = '';
+    destroyChart('revenueChart');
+    destroyChart('donutChart');
+    document.getElementById('donutLegend').innerHTML = '';
+    document.getElementById('summaryTopTbody').innerHTML = '';
+    return;
+  }
+
+  const weeks      = getWeekKeys(segPaid);
   const latestWk   = weeks[weeks.length - 1];
   const prevWk     = weeks.length > 1 ? weeks[weeks.length - 2] : null;
 
-  const totalRev   = paid.reduce((s, r) => s + r.grossRevenue, 0);
-  const wkRev      = paid.filter(r => r.weekStart === latestWk).reduce((s, r) => s + r.grossRevenue, 0);
+  const totalRev   = segPaid.reduce((s, r) => s + r.grossRevenue, 0);
+  const wkRev      = segPaid.filter(r => r.weekStart === latestWk).reduce((s, r) => s + r.grossRevenue, 0);
   const prevRev    = prevWk
-    ? allRecords.filter(r => r.weekStart === prevWk && (r.state || 'Paid') !== 'Refunded')
-                .reduce((s, r) => s + r.grossRevenue, 0)
+    ? allRecords.filter(r => {
+        if ((r.state || 'Paid') === 'Refunded') return false;
+        if (r.weekStart !== prevWk) return false;
+        if (summarySegment === 'cafe') return CAFE_CATS.includes(r.category);
+        if (summarySegment === 'merch') return r.category === 'Merch';
+        return true;
+      }).reduce((s, r) => s + r.grossRevenue, 0)
     : 0;
 
   const delta      = prevRev ? ((wkRev - prevRev) / prevRev * 100) : null;
   const deltaClass = delta === null ? 'flat' : delta >= 0 ? 'up' : 'down';
   const deltaStr   = delta === null ? '—' : (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(1) + '%';
+
+  const segCat        = summarySegment === 'merch' ? 'Merch' : '';
+  const orderSoonDays = summarySegment === 'merch' ? '56' : '14';
 
   kpiEl.innerHTML = `
     <div class="kpi-card purple">
@@ -1897,22 +1926,25 @@ function renderSummary() {
       <div class="kpi-value">${fmtCurrency(wkRev)}</div>
       <div class="kpi-delta ${deltaClass}">WoW: ${deltaStr}</div>
     </div>
-    <div class="kpi-card red" style="cursor:pointer" onclick="goToOrderPrediction('order-now')" title="View in Order Prediction">
+    <div class="kpi-card red" style="cursor:pointer" onclick="goToOrderPrediction('order-now', '${segCat}')" title="View in Order Prediction">
       <div class="kpi-label">Order Now</div>
       <div class="kpi-value" id="orderNowCount" style="font-size:32px">—</div>
       <div class="kpi-sub">products need ordering</div>
     </div>
-    <div class="kpi-card amber" style="cursor:pointer" onclick="goToOrderPrediction('order-soon')" title="View in Order Prediction">
+    <div class="kpi-card amber" style="cursor:pointer" onclick="goToOrderPrediction('order-soon', '${segCat}')" title="View in Order Prediction">
       <div class="kpi-label">Order Soon</div>
       <div class="kpi-value" id="orderSoonCount" style="font-size:32px">—</div>
-      <div class="kpi-sub">within 14 days at velocity</div>
+      <div class="kpi-sub">within ${orderSoonDays} days at velocity</div>
     </div>`;
 
   // Async: populate stock KPI counts + Stock Action Tracker
   loadDeliveries().then(deliveries => {
-    const details   = computeStockDetails(deliveries);
-    const orderNow  = details.filter(r => r.flag === 'order-now');
-    const orderSoon = details.filter(r => r.flag === 'order-soon');
+    const details    = computeStockDetails(deliveries);
+    const segDetails = summarySegment === 'cafe' ? details.filter(r => CAFE_CATS.includes(r.category))
+                     : summarySegment === 'merch' ? details.filter(r => r.category === 'Merch')
+                     : details;
+    const orderNow  = segDetails.filter(r => r.flag === 'order-now');
+    const orderSoon = segDetails.filter(r => r.flag === 'order-soon');
 
     const onEl = document.getElementById('orderNowCount');
     const osEl = document.getElementById('orderSoonCount');
@@ -1976,7 +2008,7 @@ function renderSummary() {
       labels: weeks.map(fmtWeek),
       datasets: [{
         data: weeks.map(wk =>
-          paid.filter(r => r.weekStart === wk).reduce((s, r) => s + r.grossRevenue, 0)
+          segPaid.filter(r => r.weekStart === wk).reduce((s, r) => s + r.grossRevenue, 0)
         ),
         backgroundColor: weeks.map(wk => wk === latestWk ? '#e8c547' : 'rgba(232,197,71,.35)'),
         borderRadius: 5,
@@ -1997,19 +2029,22 @@ function renderSummary() {
   });
 
   // Category donut
+  const segCats = summarySegment === 'cafe' ? CAFE_CATS
+                : summarySegment === 'merch' ? ['Merch']
+                : CATEGORIES;
   const catRev = {};
-  CATEGORIES.forEach(c => catRev[c] = 0);
-  paid.forEach(r => { catRev[r.category] = (catRev[r.category] || 0) + r.grossRevenue; });
+  segCats.forEach(c => catRev[c] = 0);
+  segPaid.forEach(r => { catRev[r.category] = (catRev[r.category] || 0) + r.grossRevenue; });
 
   destroyChart('donutChart');
   const ctx2 = document.getElementById('donutChart').getContext('2d');
   activeCharts['donutChart'] = new Chart(ctx2, {
     type: 'doughnut',
     data: {
-      labels: CATEGORIES,
+      labels: segCats,
       datasets: [{
-        data: CATEGORIES.map(c => catRev[c] || 0),
-        backgroundColor: CATEGORIES.map(c => CAT_COLORS[c]),
+        data: segCats.map(c => catRev[c] || 0),
+        backgroundColor: segCats.map(c => CAT_COLORS[c]),
         borderColor: '#111111', borderWidth: 2,
       }]
     },
@@ -2022,7 +2057,7 @@ function renderSummary() {
     }
   });
 
-  document.getElementById('donutLegend').innerHTML = CATEGORIES
+  document.getElementById('donutLegend').innerHTML = segCats
     .filter(c => (catRev[c] || 0) > 0)
     .sort((a, b) => catRev[b] - catRev[a])
     .map(c => `<div class="legend-item">
@@ -2032,7 +2067,7 @@ function renderSummary() {
 
   // Top 10 Products table
   const prodAgg = {};
-  paid.forEach(r => {
+  segPaid.forEach(r => {
     const key = r.product_name_raw;
     if (!prodAgg[key]) prodAgg[key] = { name: r.displayName, category: r.category, units: 0, revenue: 0 };
     prodAgg[key].units   += r.quantity;
@@ -4229,9 +4264,20 @@ async function init() {
     });
   });
 
+  // ── Overview segment toggle ──
+  document.querySelectorAll('#summarySegTabs .sub-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#summarySegTabs .sub-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      summarySegment = btn.dataset.seg;
+      renderSummary();
+    });
+  });
+
   // ── Sub-tab switching (scoped to parent section) ──
   document.querySelectorAll('.sub-tab').forEach(tab => {
     tab.addEventListener('click', () => {
+      if (tab.closest('#summarySegTabs')) return; // handled by segment toggle listener
       const parentSection = tab.closest('.section');
       if (parentSection) {
         parentSection.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
