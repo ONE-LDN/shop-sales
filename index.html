@@ -779,67 +779,129 @@
        ══════════════════════════════════════════════════════════ -->
   <div class="section" data-tab="predict">
 
-    <div class="pred-controls">
-      <select id="predCatFilter">
-        <option value="">All categories</option>
-        <option value="Shakes">Shakes</option>
-        <option value="Bars &amp; Snacks">Bars &amp; Snacks</option>
-        <option value="Functional Drinks">Functional Drinks</option>
-      </select>
-      <select id="predBrandFilter">
-        <option value="">All brands</option>
-      </select>
-      <select id="predFlagFilter">
-        <option value="">All statuses</option>
-        <option value="order-now">🔴 Order now</option>
-        <option value="order-soon">🟡 Order soon</option>
-        <option value="sufficient">🟢 Sufficient</option>
-        <option value="no-data">⚪ No stock data</option>
-      </select>
-      <button class="pred-reload-btn" id="predReloadBtn">↻ Refresh</button>
-      <span class="pred-meta" id="predMeta"></span>
+    <div class="sub-tabs">
+      <button class="sub-tab active" data-sub="pred-cafe">Cafe</button>
+      <button class="sub-tab" data-sub="pred-merch">Merch</button>
     </div>
 
-    <div class="table-card">
-      <table id="predTable">
-        <thead>
-          <tr>
-            <th style="width:28px"></th>
-            <th>Product</th>
-            <th>Brand</th>
-            <th>Category</th>
-            <th class="right">Avg / wk</th>
-            <th class="right">Est. Stock</th>
-            <th>Covers</th>
-            <th class="right">Predicted Order</th>
-            <th class="right">Last Delivery</th>
-          </tr>
-        </thead>
-        <tbody id="predTbody"></tbody>
-      </table>
-    </div>
+    <!-- ── Cafe sub-section ── -->
+    <div class="sub-section active" data-sub="pred-cafe">
+      <div class="pred-controls">
+        <select id="predCatFilter">
+          <option value="">All categories</option>
+          <option value="Shakes">Shakes</option>
+          <option value="Bars &amp; Snacks">Bars &amp; Snacks</option>
+          <option value="Functional Drinks">Functional Drinks</option>
+        </select>
+        <select id="predBrandFilter">
+          <option value="">All brands</option>
+        </select>
+        <select id="predFlagFilter">
+          <option value="">All statuses</option>
+          <option value="order-now">🔴 Order now</option>
+          <option value="order-soon">🟡 Order soon</option>
+          <option value="sufficient">🟢 Sufficient</option>
+          <option value="no-data">⚪ No stock data</option>
+        </select>
+        <button class="pred-reload-btn" id="predReloadBtn">↻ Refresh</button>
+        <span class="pred-meta" id="predMeta"></span>
+      </div>
+      <div class="table-card">
+        <table id="predTable">
+          <thead>
+            <tr>
+              <th style="width:28px"></th>
+              <th>Product</th>
+              <th>Brand</th>
+              <th>Category</th>
+              <th class="right">Avg / wk</th>
+              <th class="right">Est. Stock</th>
+              <th>Covers</th>
+              <th class="right">Predicted Order</th>
+              <th class="right">Last Delivery</th>
+            </tr>
+          </thead>
+          <tbody id="predTbody"></tbody>
+        </table>
+      </div>
+      <div class="pred-note" id="predNote"></div>
+    </div><!-- /pred-cafe -->
 
-    <div class="pred-note" id="predNote"></div>
+    <!-- ── Merch sub-section ── -->
+    <div class="sub-section" data-sub="pred-merch">
+      <div class="pred-controls">
+        <select id="predMerchCollFilter">
+          <option value="">All collections</option>
+        </select>
+        <select id="predMerchFlagFilter">
+          <option value="">All statuses</option>
+          <option value="order-now">🔴 Order now</option>
+          <option value="order-soon">🟡 Order soon</option>
+          <option value="sufficient">🟢 Sufficient</option>
+          <option value="no-data">⚪ No stock data</option>
+        </select>
+        <button class="pred-reload-btn" id="predMerchReloadBtn">↻ Refresh</button>
+        <span class="pred-meta" id="predMerchMeta"></span>
+      </div>
+      <div class="table-card">
+        <table id="predMerchTable">
+          <thead>
+            <tr>
+              <th style="width:28px"></th>
+              <th>Product</th>
+              <th>Collection</th>
+              <th>Colourway</th>
+              <th>Size</th>
+              <th class="right">Avg / wk</th>
+              <th class="right">Est. Stock</th>
+              <th>Covers</th>
+              <th class="right">Predicted Order</th>
+              <th class="right">Last Delivery</th>
+            </tr>
+          </thead>
+          <tbody id="predMerchTbody"></tbody>
+        </table>
+      </div>
+      <div class="pred-note" id="predMerchNote"></div>
+    </div><!-- /pred-merch -->
 
   </div><!-- /predict section -->
 
   <div class="section" data-tab="history">
-    <div class="history-controls">
-      <div id="historyMonthPills" class="history-month-pills"></div>
-      <button class="cost-edit-btn" id="openCostEditBtn">Edit cost prices</button>
+
+    <div class="sub-tabs">
+      <button class="sub-tab active" data-sub="hist-cafe">Cafe</button>
+      <button class="sub-tab" data-sub="hist-merch">Merch</button>
     </div>
-    <div class="pred-controls" style="margin-bottom:18px">
-      <select id="historyCatFilter">
-        <option value="">All categories</option>
-        <option value="Shakes">Shakes</option>
-        <option value="Bars &amp; Snacks">Bars &amp; Snacks</option>
-        <option value="Functional Drinks">Functional Drinks</option>
-      </select>
-      <select id="historyBrandFilter">
-        <option value="">All brands</option>
-      </select>
-    </div>
-    <div id="historyContent"></div>
+
+    <!-- ── Cafe sub-section ── -->
+    <div class="sub-section active" data-sub="hist-cafe">
+      <div class="history-controls">
+        <div id="historyMonthPills" class="history-month-pills"></div>
+        <button class="cost-edit-btn" id="openCostEditBtn">Edit cost prices</button>
+      </div>
+      <div class="pred-controls" style="margin-bottom:18px">
+        <select id="historyCatFilter">
+          <option value="">All categories</option>
+          <option value="Shakes">Shakes</option>
+          <option value="Bars &amp; Snacks">Bars &amp; Snacks</option>
+          <option value="Functional Drinks">Functional Drinks</option>
+        </select>
+        <select id="historyBrandFilter">
+          <option value="">All brands</option>
+        </select>
+      </div>
+      <div id="historyContent"></div>
+    </div><!-- /hist-cafe -->
+
+    <!-- ── Merch sub-section ── -->
+    <div class="sub-section" data-sub="hist-merch">
+      <div class="history-controls">
+        <div id="historyMerchMonthPills" class="history-month-pills"></div>
+      </div>
+      <div id="historyMerchContent"></div>
+    </div><!-- /hist-merch -->
+
   </div><!-- /history section -->
 
 </div><!-- /container -->
@@ -913,6 +975,7 @@
       <div id="pdfReviewArea" style="display:none">
         <div id="pdfSupplierPill"></div>
         <div class="invoice-meta" id="pdfInvoiceMeta"></div>
+        <div id="pdfDebugPanel" style="display:none;padding:0 4px"></div>
         <div class="invoice-review-wrap">
           <table class="invoice-review-table" id="pdfReviewTable">
             <thead id="pdfReviewHead">
@@ -1212,7 +1275,8 @@ let activeCharts    = {};
 let periodMode   = 'rolling';   // 'rolling' | 'month'
 let rollingWeeks = 4;
 let monthFilter  = null;        // 'YYYY-MM'
-let historyMonth = null;        // 'YYYY-MM' for Stock History tab
+let historyMonth      = null;   // 'YYYY-MM' for Stock History → Cafe tab
+let historyMerchMonth = null;   // 'YYYY-MM' for Stock History → Merch tab
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DATE + PERIOD HELPERS
@@ -1765,7 +1829,11 @@ function goToOrderPrediction(flag) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   const predTab = document.querySelector('.tab[data-tab="predict"]');
   predTab?.classList.add('active');
-  document.querySelector('.section[data-tab="predict"]')?.classList.add('active');
+  const predSection = document.querySelector('.section[data-tab="predict"]');
+  predSection?.classList.add('active');
+  // Ensure the Cafe sub-tab is active (stock tracker links are cafe-specific)
+  predSection?.querySelectorAll('.sub-tab').forEach(t => t.classList.toggle('active', t.dataset.sub === 'pred-cafe'));
+  predSection?.querySelectorAll('.sub-section').forEach(s => s.classList.toggle('active', s.dataset.sub === 'pred-cafe'));
   if (flag) {
     const sel = document.getElementById('predFlagFilter');
     if (sel) sel.value = flag;
@@ -2495,6 +2563,9 @@ async function saveDeliveryDate(header, newDate, dateSpan, editBtn, input, saveB
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function renderStockHistory() {
+  const activeSub = document.querySelector('.section[data-tab="history"] .sub-tab.active')?.dataset.sub;
+  if (activeSub === 'hist-merch') { await renderMerchStockHistory(); return; }
+
   const content  = document.getElementById('historyContent');
   const pillsEl  = document.getElementById('historyMonthPills');
   content.innerHTML = '<div style="text-align:center;color:#666666;padding:32px">Loading…</div>';
@@ -2633,6 +2704,118 @@ async function renderStockHistory() {
     </div>`;
 }
 
+async function renderMerchStockHistory() {
+  const content  = document.getElementById('historyMerchContent');
+  const pillsEl  = document.getElementById('historyMerchMonthPills');
+  content.innerHTML = '<div style="text-align:center;color:#666666;padding:32px">Loading…</div>';
+
+  const deliveries = await loadDeliveries();
+  const paid = allRecords.filter(r => (r.state || 'Paid') !== 'Refunded' && r.category === 'Merch');
+
+  const isMerchDelivery = d => {
+    const info = productLookup[d.product_name_raw];
+    return (info && info.category === 'Merch') || d.supplier === 'tapstitch';
+  };
+  const merchDeliveries = deliveries.filter(isMerchDelivery);
+
+  const delivMonths = merchDeliveries.map(d => (d.delivery_date || '').slice(0, 7)).filter(Boolean);
+  const salesMonths = paid.map(r => (r.date || '').slice(0, 7)).filter(Boolean);
+  const allMonths   = [...new Set([...delivMonths, ...salesMonths])].filter(Boolean).sort().reverse();
+
+  if (!allMonths.length) {
+    pillsEl.innerHTML = '';
+    content.innerHTML = '<div style="text-align:center;color:#4a4f66;padding:32px">No merch delivery or sales data yet.</div>';
+    return;
+  }
+
+  if (!historyMerchMonth || !allMonths.includes(historyMerchMonth)) historyMerchMonth = allMonths[0];
+
+  pillsEl.innerHTML = allMonths.map(m => {
+    const [y, mo] = m.split('-').map(Number);
+    const label   = new Date(y, mo - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+    return `<button class="period-month-btn${m === historyMerchMonth ? ' active' : ''}" data-hmerchmonth="${m}">${label}</button>`;
+  }).join('');
+  pillsEl.querySelectorAll('[data-hmerchmonth]').forEach(btn => {
+    btn.addEventListener('click', () => { historyMerchMonth = btn.dataset.hmerchmonth; renderMerchStockHistory(); });
+  });
+
+  const mDeliveries = merchDeliveries.filter(d => (d.delivery_date || '').startsWith(historyMerchMonth));
+  const mSales      = paid.filter(r => (r.date || '').startsWith(historyMerchMonth));
+
+  const keys = new Set([...mDeliveries.map(d => d.product_name_raw), ...mSales.map(r => r.productNameRaw)]);
+
+  if (!keys.size) {
+    content.innerHTML = '<div style="text-align:center;color:#4a4f66;padding:32px">No merch data for this month.</div>';
+    return;
+  }
+
+  const fmt  = n => n != null ? `£${n.toFixed(2)}` : '—';
+  const fmtN = n => n != null ? n.toFixed(1) + '%' : null;
+
+  const rows = [];
+  for (const key of keys) {
+    const info      = productLookup[key] || {};
+    const variant   = [info.colourway, info.size].filter(Boolean).join(' / ');
+    const label     = info.display_name ? (variant ? `${info.display_name} — ${variant}` : info.display_name) : key;
+    const delivered = mDeliveries.filter(d => d.product_name_raw === key).reduce((s, d) => s + (d.quantity_received || 0), 0);
+    const sold      = mSales.filter(r => r.productNameRaw === key).reduce((s, r) => s + (r.quantity || 0), 0);
+    const net       = delivered - sold;
+    const revenue   = mSales.filter(r => r.productNameRaw === key).reduce((s, r) => s + (r.grossRevenue || 0), 0);
+    const costPrice = info.cost_price != null ? parseFloat(info.cost_price) : null;
+    const cogs      = costPrice != null ? sold * costPrice : null;
+    const gp        = (cogs != null && revenue > 0) ? (revenue - cogs) / revenue * 100 : null;
+    rows.push({ key, label, collection: info.collection || '', delivered, sold, net, revenue, cogs, gp });
+  }
+  rows.sort((a, b) => a.collection.localeCompare(b.collection) || a.label.localeCompare(b.label));
+
+  const totDelivered = rows.reduce((s, r) => s + r.delivered, 0);
+  const totSold      = rows.reduce((s, r) => s + r.sold, 0);
+  const totNet       = totDelivered - totSold;
+  const totRevenue   = rows.reduce((s, r) => s + r.revenue, 0);
+  const totCogs      = rows.every(r => r.cogs != null) ? rows.reduce((s, r) => s + r.cogs, 0) : null;
+  const totGp        = (totCogs != null && totRevenue > 0) ? (totRevenue - totCogs) / totRevenue * 100 : null;
+
+  const netCell = (n) => {
+    if (n === 0) return '<td class="right">—</td>';
+    return `<td class="right ${n > 0 ? 'net-pos' : 'net-neg'}">${n > 0 ? '+' : ''}${n}</td>`;
+  };
+
+  const tableRows = rows.map(r => `<tr>
+    <td>${r.label.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td>
+    <td class="right">${r.delivered || '—'}</td>
+    <td class="right">${r.sold || '—'}</td>
+    ${netCell(r.net)}
+    <td class="right">${r.revenue > 0 ? fmt(r.revenue) : '—'}</td>
+    <td class="right">${r.cogs != null ? fmt(r.cogs) : '<span class="no-cost-hint">—</span>'}</td>
+    <td class="right">${r.gp != null ? fmtN(r.gp) : '<span class="no-cost-hint">—</span>'}</td>
+  </tr>`).join('');
+
+  content.innerHTML = `
+    <div class="table-card">
+      <table class="stock-history-table">
+        <thead><tr>
+          <th>Product &amp; Variant</th>
+          <th class="right">Delivered</th>
+          <th class="right">Sold</th>
+          <th class="right">Net</th>
+          <th class="right">Revenue</th>
+          <th class="right">Cost (COGS)</th>
+          <th class="right">GP%</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+        <tfoot><tr class="totals-row">
+          <td>Total</td>
+          <td class="right">${totDelivered}</td>
+          <td class="right">${totSold}</td>
+          ${netCell(totNet)}
+          <td class="right">${fmt(totRevenue)}</td>
+          <td class="right">${totCogs != null ? fmt(totCogs) : '—'}</td>
+          <td class="right">${totGp != null ? fmtN(totGp) : '—'}</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+}
+
 function openCostEditModal() {
   const list = document.getElementById('costEditList');
   const products = Object.values(productLookup)
@@ -2716,6 +2899,9 @@ async function saveCostPrices() {
 }
 
 async function renderOrderPrediction() {
+  const activeSub = document.querySelector('.section[data-tab="predict"] .sub-tab.active')?.dataset.sub;
+  if (activeSub === 'pred-merch') { await renderMerchOrderPrediction(); return; }
+
   const tbody   = document.getElementById('predTbody');
   const metaEl  = document.getElementById('predMeta');
   const noteEl  = document.getElementById('predNote');
@@ -2915,6 +3101,148 @@ async function renderOrderPrediction() {
     `Products with no delivery logged show velocity only — log a delivery to unlock stock estimates.`;
 }
 
+async function renderMerchOrderPrediction() {
+  const tbody  = document.getElementById('predMerchTbody');
+  const metaEl = document.getElementById('predMerchMeta');
+  const noteEl = document.getElementById('predMerchNote');
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
+
+  const deliveries = await loadDeliveries();
+
+  const VELOCITY_WEEKS = 4;
+  const CYCLE_WEEKS    = 8;   // merch restock horizon
+  const paid = allRecords.filter(r => (r.state || 'Paid') !== 'Refunded' && r.category === 'Merch');
+  const allWeeks = getWeekKeys(paid);
+  const velCutoffWk = allWeeks.length >= VELOCITY_WEEKS ? allWeeks.slice(-VELOCITY_WEEKS)[0] : allWeeks[0] || null;
+  const velRecords   = velCutoffWk ? paid.filter(r => r.weekStart >= velCutoffWk) : paid;
+  const velWeeksActual = Math.max(1, getWeekKeys(velRecords).length);
+
+  const velMap = {};
+  for (const r of velRecords) velMap[r.productNameRaw] = (velMap[r.productNameRaw] || 0) + r.quantity;
+
+  const delivMap = {};
+  const merchDeliveries = deliveries.filter(d => {
+    const info = productLookup[d.product_name_raw];
+    return (info && info.category === 'Merch') || d.supplier === 'tapstitch';
+  });
+  for (const d of merchDeliveries) {
+    const ex = delivMap[d.product_name_raw];
+    if (!ex) {
+      delivMap[d.product_name_raw] = { lastDelivQty: d.quantity_received, lastDelivDate: d.delivery_date, firstDelivDate: d.delivery_date };
+    } else {
+      if (d.delivery_date > ex.lastDelivDate) { ex.lastDelivQty = d.quantity_received; ex.lastDelivDate = d.delivery_date; }
+      if (d.delivery_date < ex.firstDelivDate) ex.firstDelivDate = d.delivery_date;
+    }
+  }
+
+  const allKeys  = new Set([...Object.keys(velMap), ...Object.keys(delivMap)]);
+  const collSet  = new Set();
+  const rows = [];
+
+  for (const key of allKeys) {
+    const info = productLookup[key] || {};
+    if ((info.category || getFallbackCategory(key)) !== 'Merch') continue;
+
+    const displayName = info.display_name || key;
+    const collection  = info.collection  || '';
+    const colourway   = info.colourway   || '';
+    const size        = info.size        || '';
+    if (collection) collSet.add(collection);
+
+    const totalVelUnits = velMap[key] || 0;
+    const avgPerWeek    = totalVelUnits / velWeeksActual;
+
+    const dInfo = delivMap[key];
+    let estStock = null, lastDelivDate = null;
+    if (dInfo) {
+      const soldSince = paid
+        .filter(r => r.productNameRaw === key && r.date.slice(0, 10) >= dInfo.lastDelivDate)
+        .reduce((s, r) => s + r.quantity, 0);
+      estStock = Math.max(0, dInfo.lastDelivQty - soldSince);
+      lastDelivDate = dInfo.lastDelivDate;
+    }
+
+    let coversDays = null;
+    if (estStock !== null) coversDays = avgPerWeek > 0 ? Math.round((estStock / avgPerWeek) * 7) : Infinity;
+
+    let predictedOrder = null;
+    if (estStock !== null) predictedOrder = Math.max(0, Math.ceil((avgPerWeek * CYCLE_WEEKS) - estStock));
+
+    // Urgency thresholds scaled to 8-week cycle
+    let flag, flagOrder;
+    if (estStock === null)                                    { flag = 'no-data';    flagOrder = 3; }
+    else if (avgPerWeek === 0)                                { flag = 'sufficient'; flagOrder = 4; }
+    else if (coversDays === Infinity || coversDays > CYCLE_WEEKS * 7) { flag = 'sufficient'; flagOrder = 2; }
+    else if (coversDays >= 14)                                { flag = 'order-soon'; flagOrder = 1; }
+    else                                                      { flag = 'order-now';  flagOrder = 0; }
+
+    rows.push({ key, displayName, collection, colourway, size, avgPerWeek, estStock, coversDays, predictedOrder, flag, flagOrder, lastDelivDate });
+  }
+
+  // Collection filter
+  const collSel  = document.getElementById('predMerchCollFilter');
+  const prevColl = collSel.value;
+  collSel.innerHTML = '<option value="">All collections</option>' +
+    [...collSet].sort().map(c => `<option value="${c}"${c === prevColl ? ' selected' : ''}>${c}</option>`).join('');
+  const flagFilter = document.getElementById('predMerchFlagFilter').value;
+  const collFilter = collSel.value;
+
+  let filtered = rows;
+  if (collFilter) filtered = filtered.filter(r => r.collection === collFilter);
+  if (flagFilter) filtered = filtered.filter(r => r.flag === flagFilter);
+  filtered.sort((a, b) => a.flagOrder - b.flagOrder || b.avgPerWeek - a.avgPerWeek);
+
+  const FLAG_LABELS = { 'order-now': '🔴 Order now', 'order-soon': '🟡 Order soon', 'sufficient': '🟢 Sufficient', 'no-data': '⚪ No stock data' };
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666666;padding:24px">No merch products match current filters.</td></tr>';
+  } else {
+    tbody.innerHTML = filtered.map(r => {
+      const barPct = r.coversDays === null ? 0 : r.coversDays === Infinity ? 100 : Math.min(100, (r.coversDays / (CYCLE_WEEKS * 7)) * 100);
+      const barCol = r.flag === 'order-now' ? '#f87171' : r.flag === 'order-soon' ? '#e8c547' : r.flag === 'sufficient' ? '#4ade80' : '#4a4f66';
+
+      const coversCell = r.coversDays === null
+        ? '<span style="color:#4a4f66">—</span>'
+        : r.coversDays === Infinity
+          ? `<div class="covers-bar-wrap"><div class="covers-bar"><div class="covers-bar-fill" style="width:100%;background:${barCol}"></div></div><span style="color:#4a4f66;font-size:11px">∞</span></div>`
+          : `<div class="covers-bar-wrap"><div class="covers-bar"><div class="covers-bar-fill" style="width:${barPct}%;background:${barCol}"></div></div><span style="font-size:11px;white-space:nowrap">${r.coversDays}d</span></div>`;
+
+      const predCell  = r.predictedOrder === null ? '<span style="color:#4a4f66">—</span>'
+        : r.predictedOrder === 0 ? '<span class="pred-order-qty zero">0</span>'
+        : `<span class="pred-order-qty">${r.predictedOrder} units</span>`;
+
+      const lastDelCell = r.lastDelivDate
+        ? (() => { const [y,m,d] = r.lastDelivDate.split('-'); return `${d}/${m}/${y}`; })()
+        : '<span style="color:#4a4f66">—</span>';
+
+      return `<tr>
+        <td><span class="pred-flag ${r.flag}"></span></td>
+        <td style="font-weight:600">${r.displayName}</td>
+        <td style="color:#666666">${r.collection || '—'}</td>
+        <td style="color:#666666">${r.colourway  || '—'}</td>
+        <td style="color:#666666">${r.size       || '—'}</td>
+        <td class="right">${r.avgPerWeek > 0 ? r.avgPerWeek.toFixed(1) : '—'}</td>
+        <td class="right">${r.estStock !== null ? r.estStock : '<span style="color:#4a4f66">—</span>'}</td>
+        <td>${coversCell}</td>
+        <td class="right">${predCell}</td>
+        <td class="right" style="color:#666666;font-size:11px">${lastDelCell}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  const ordNow  = filtered.filter(r => r.flag === 'order-now').length;
+  const ordSoon = filtered.filter(r => r.flag === 'order-soon').length;
+  metaEl.textContent = `${filtered.length} variants · ${ordNow} need ordering · ${ordSoon} order soon`;
+
+  const cutoffStr = velCutoffWk
+    ? (() => { const [y,m,d] = velCutoffWk.split('-'); return `${d}/${m}/${y}`; })()
+    : 'all time';
+  noteEl.innerHTML =
+    `<strong>How this works:</strong> Velocity = avg units/week over the last ${velWeeksActual} weeks of merch sales (from ${cutoffStr}). ` +
+    `Estimated stock = last delivery quantity − units sold since that delivery. ` +
+    `Predicted order = units needed to cover an <strong>8-week cycle</strong> at current velocity.`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // RENDER DISPATCH
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2923,7 +3251,7 @@ function renderAll() {
   const activeTab = document.querySelector('.tab.active')?.dataset.tab;
   if (activeTab === 'summary' || !activeTab) renderSummary();
   if (activeTab === 'sellers') {
-    const activeSub = document.querySelector('.sub-tab.active')?.dataset.sub;
+    const activeSub = document.querySelector('.section[data-tab="sellers"] .sub-tab.active')?.dataset.sub;
     if (activeSub === 'cafe' || !activeSub) renderCafe();
     if (activeSub === 'merch') renderMerch();
   }
@@ -3001,6 +3329,9 @@ function openDeliveryModal() {
   document.getElementById('pdfFileInput').value            = '';
   document.getElementById('pdfReviewBody').innerHTML       = '';
   document.getElementById('pdfInvoiceMeta').textContent    = '';
+  document.getElementById('pdfDebugPanel').innerHTML       = '';
+  document.getElementById('pdfDebugPanel').style.display   = 'none';
+  window._pdfDebugPerFile = null;
   window._pdfInvoiceRows = [];
   showDeliveryStep('choose');
   document.getElementById('deliveryModal').classList.add('open');
@@ -3383,6 +3714,7 @@ function autoDetectSupplier(textLines) {
 // Product name is on the line immediately before the data line.
 function parseTapstitchInvoice(lines) {
   const items = [];
+  let cachedName = '';  // tracks last non-data line as fallback product name
 
   console.debug('[Tapstitch] Extracted lines:\n' + lines.map((l, i) => `  ${i}: ${l}`).join('\n'));
 
@@ -3414,14 +3746,22 @@ function parseTapstitchInvoice(lines) {
       const prevIsNameLine = prevLine && !/£/.test(prevLine) && !SKIP_RE.test(prevLine) && !/^\d/.test(prevLine);
       const capturedHasSep = /\//.test(captured);
 
+      if (prevIsNameLine) cachedName = prevLine; // keep cache current
+
       let productName, colourway, size;
 
-      if (prevIsNameLine && capturedHasSep) {
-        // Product name on previous line, "Colour/Size + prices" on this line
-        productName    = prevLine;
-        const slashIdx = captured.lastIndexOf('/');
-        colourway      = captured.slice(0, slashIdx).trim();
-        size           = captured.slice(slashIdx + 1).trim();
+      if (capturedHasSep) {
+        // Colour/size variant is in captured — product name from prevLine or cache
+        const nameSource = prevIsNameLine ? prevLine : cachedName;
+        if (nameSource) {
+          productName    = nameSource;
+          const slashIdx = captured.lastIndexOf('/');
+          colourway      = captured.slice(0, slashIdx).trim();
+          size           = captured.slice(slashIdx + 1).trim();
+        } else {
+          // No name context at all — embedded name+variant
+          productName = captured; colourway = ''; size = '';
+        }
         i++;
       } else {
         // Product name is in captured, variant on next line
@@ -3463,6 +3803,8 @@ function parseTapstitchInvoice(lines) {
         _isMerch:     true,
       });
     } else {
+      // Non-data line: cache as potential product name if it looks like one
+      if (!/£/.test(line) && !/^\d/.test(line)) cachedName = line;
       i++;
     }
   }
@@ -3553,27 +3895,44 @@ async function handleInvoicePdfs(files) {
   try {
     let allItems = [];
     const invoiceMetas = [];
+    const debugPerFile = [];
 
     for (const file of validFiles) {
       const supplier = window._pdfSupplier || 'muscle-finesse';
       // Tapstitch tables can have slight Y-offset between columns — use wider bucket
-      const text     = await parseInvoicePDF(file, supplier === 'tapstitch' ? 6 : 2);
-      const lines    = text.split('\n').map(l => l.trim()).filter(Boolean);
-      const items    = supplier === 'tapstitch'
+      let text  = await parseInvoicePDF(file, supplier === 'tapstitch' ? 6 : 2);
+      let lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      let items = supplier === 'tapstitch'
         ? parseTapstitchInvoice(lines)
         : extractInvoiceItems(text);
-      const date  = parseInvoiceDate(text);
-      const order = parseInvoiceOrderNo(text);
+
+      // If Tapstitch yields very few items, retry with tighter bucket (avoids row merging)
+      if (supplier === 'tapstitch' && items.length < 3) {
+        console.debug('[Tapstitch] Only %d items with bucket=6, retrying with bucket=3', items.length);
+        const text2  = await parseInvoicePDF(file, 3);
+        const lines2 = text2.split('\n').map(l => l.trim()).filter(Boolean);
+        const items2 = parseTapstitchInvoice(lines2);
+        if (items2.length > items.length) {
+          console.debug('[Tapstitch] bucket=3 yielded %d items — using that', items2.length);
+          text = text2; lines = lines2; items = items2;
+        }
+      }
 
       if (!items.length) {
         console.debug(`[Invoice Parser] No items found in "${file.name}". Raw text:\n` + text);
       }
 
+      if (supplier === 'tapstitch') debugPerFile.push({ name: file.name, lines });
+
       // Tag each item with its source invoice date + order number
+      const date  = parseInvoiceDate(text);
+      const order = parseInvoiceOrderNo(text);
       items.forEach(item => { item._invoiceDate = date; item._invoiceOrder = order; });
       allItems = allItems.concat(items);
       invoiceMetas.push({ date, order, count: items.length, name: file.name });
     }
+
+    window._pdfDebugPerFile = debugPerFile.length ? debugPerFile : null;
 
     document.getElementById('pdfParsing').style.display    = 'none';
     document.getElementById('pdfReviewArea').style.display = '';
@@ -3613,6 +3972,22 @@ function renderPdfReviewTable(items, invoiceMetas) {
   } else {
     const m = invoiceMetas[0] || {};
     meta.innerHTML = `${m.order ? 'Invoice <strong>#' + m.order + '</strong>' : ''} · Date: <strong>${m.date || 'unknown'}</strong> · <strong>${items.length}</strong> line items`;
+  }
+
+  // Debug panel for Tapstitch — shows raw extracted lines so format issues are diagnosable
+  const debugEl = document.getElementById('pdfDebugPanel');
+  if (debugEl) {
+    const dbg = window._pdfDebugPerFile;
+    if (dbg && dbg.length) {
+      debugEl.innerHTML = dbg.map(f => `
+        <details style="margin:6px 0;font-size:11px">
+          <summary style="cursor:pointer;color:#888;user-select:none">Debug: raw extracted text — ${f.name.replace(/&/g,'&amp;')} (${f.lines.length} lines)</summary>
+          <pre style="max-height:180px;overflow:auto;background:#0d1117;color:#8b949e;padding:8px;border-radius:4px;margin-top:4px;font-size:10px;line-height:1.4">${f.lines.map((l, i) => `${String(i).padStart(3)}: ${l.replace(/&/g,'&amp;').replace(/</g,'&lt;')}`).join('\n')}</pre>
+        </details>`).join('');
+      debugEl.style.display = '';
+    } else {
+      debugEl.style.display = 'none';
+    }
   }
 
   const cafeProducts  = getCafeProducts();
@@ -3830,13 +4205,16 @@ async function init() {
     });
   });
 
-  // ── Sub-tab switching (Top Sellers) ──
+  // ── Sub-tab switching (scoped to parent section) ──
   document.querySelectorAll('.sub-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.sub-section').forEach(s => s.classList.remove('active'));
-      tab.classList.add('active');
-      document.querySelector(`.sub-section[data-sub="${tab.dataset.sub}"]`)?.classList.add('active');
+      const parentSection = tab.closest('.section');
+      if (parentSection) {
+        parentSection.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+        parentSection.querySelectorAll('.sub-section').forEach(s => s.classList.remove('active'));
+        tab.classList.add('active');
+        parentSection.querySelector(`.sub-section[data-sub="${tab.dataset.sub}"]`)?.classList.add('active');
+      }
       renderAll();
     });
   });
@@ -3890,6 +4268,9 @@ async function init() {
   ['predCatFilter', 'predBrandFilter', 'predFlagFilter'].forEach(id => {
     document.getElementById(id).addEventListener('change', renderOrderPrediction);
   });
+  ['predMerchCollFilter', 'predMerchFlagFilter'].forEach(id => {
+    document.getElementById(id).addEventListener('change', renderMerchOrderPrediction);
+  });
 
   // ── Stock History filters ──
   ['historyCatFilter', 'historyBrandFilter'].forEach(id => {
@@ -3898,6 +4279,10 @@ async function init() {
   document.getElementById('predReloadBtn').addEventListener('click', () => {
     allDeliveries = null; // bust cache
     renderOrderPrediction();
+  });
+  document.getElementById('predMerchReloadBtn').addEventListener('click', () => {
+    allDeliveries = null;
+    renderMerchOrderPrediction();
   });
 
   // ── Log Delivery modal ──
