@@ -1810,6 +1810,9 @@ function computeStockDetails(deliveries) {
       key,
       displayName: info.display_name || key,
       category:    cat,
+      isMerch,
+      colourway:   info.colourway || null,
+      size:        info.size      || null,
       brand:       info.brand || getFallbackBrand(key, cat),
       avgPerWeek,
       estStock,
@@ -1975,7 +1978,7 @@ function renderSummary() {
               <th>Product</th>
               <th>Category</th>
               <th class="right">Qty Req.</th>
-              <th class="right">Qty (Pack)</th>
+              <th class="right">Variant / Pack</th>
               <th class="right">Est. Cost</th>
             </tr>
           </thead>
@@ -1991,7 +1994,9 @@ function renderSummary() {
                 <td style="font-weight:600">${r.displayName}</td>
                 <td>${catBadge(r.category)}</td>
                 <td class="right">${r.qtyRequired > 0 ? r.qtyRequired : '—'}</td>
-                <td class="right">${r.packQty !== null ? r.packQty + ' pk' : '—'}</td>
+                <td class="right">${r.isMerch
+                  ? ([r.colourway, r.size].filter(Boolean).join(' / ') || '—')
+                  : (r.packQty !== null ? r.packQty + ' pk' : '—')}</td>
                 <td class="right">${r.estCost !== null ? fmtCurrency(r.estCost) : '—'}</td>
               </tr>`).join('')}
           </tbody>
