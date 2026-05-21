@@ -3727,12 +3727,30 @@ function parseTapstitchInvoice(lines) {
   const SKIP_RE = /^(subtotal|total\b|total\s+gbp|product\s*cost|production\s*cost|service\s*fee|shipping\b|discount|tax|if\s*you\s*have|page\s*\d|from\b|bill\s*to|invoice|inovice|order\s*number|date\s*of\s*issue|tapstitch|dover|united\s*states|imperial\s*wharf|london|support@|item\s+unit|unit\s*price)/i;
 
   // Try service-fee pattern (4 money cols) first, then 3-col pattern
-  const FEE_RE   = /^(.+?)\s+£([\d.]+)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;  // 5 groups
-  const NOFEE_RE = /^(.+?)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;               // 4 groups
+  const FEE_RE        = /^(.+?)\s+£([\d.]+)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;  // 5 groups
+  const NOFEE_RE      = /^(.+?)\s+£([\d.]+)\s+(\d+)\s+£([\d.]+)\s*$/;               // 4 groups
+  // Price-only line (no description prefix): "£unit [£fee] qty £total"
+  const PRICE_ONLY_RE = /^£[\d.]+(?:\s+£[\d.]+)?\s+\d+\s+£[\d.]+\s*$/;
+
+  // Pre-pass: if a description-only line is immediately followed by a price-only
+  // line, join them. This happens when PDF column Y-coordinates differ slightly
+  // so the variant text and its prices land in different Y-buckets.
+  const joined = [];
+  for (let j = 0; j < lines.length; j++) {
+    const cur  = lines[j].trim();
+    const next = (lines[j + 1] || '').trim();
+    if (cur && !SKIP_RE.test(cur) && !/£/.test(cur) && PRICE_ONLY_RE.test(next)) {
+      joined.push(cur + ' ' + next);
+      j++; // consume both lines
+    } else {
+      joined.push(cur);
+    }
+  }
+  console.debug('[Tapstitch] After join-pass: %d→%d lines', lines.length, joined.length);
 
   let i = 0;
-  while (i < lines.length) {
-    const line = lines[i].trim();
+  while (i < src.length) {
+    const line = src[i].trim();
     if (!line || SKIP_RE.test(line)) { i++; continue; }
 
     const dmFee   = line.match(FEE_RE);
@@ -3747,7 +3765,7 @@ function parseTapstitchInvoice(lines) {
 
       const captured = dm[1].trim();
 
-      const prevLine       = i > 0 ? lines[i - 1].trim() : '';
+      const prevLine       = i > 0 ? src[i - 1].trim() : '';
       const prevIsNameLine = prevLine && !/£/.test(prevLine) && !SKIP_RE.test(prevLine) && !/^\d/.test(prevLine);
       const capturedHasSep = /\//.test(captured);
 
@@ -3771,7 +3789,7 @@ function parseTapstitchInvoice(lines) {
       } else {
         // Product name is in captured, variant on next line
         productName    = captured;
-        const nextLine = (lines[i + 1] || '').trim();
+        const nextLine = (src[i + 1] || '').trim();
         const isVariant = nextLine && /\//.test(nextLine) && !/£/.test(nextLine) && !SKIP_RE.test(nextLine);
         if (isVariant) {
           const slashIdx = nextLine.lastIndexOf('/');
