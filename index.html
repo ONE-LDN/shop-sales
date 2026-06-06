@@ -513,6 +513,9 @@
     .cost-edit-row input:focus { outline: none; border-color: #e8c547; }
     .cost-edit-col-hdr { display: flex; justify-content: flex-end; gap: 10px; padding: 0 0 4px; }
     .cost-edit-col-hdr span { width: 80px; font-size: 11px; color: #4a4f66; text-align: right; }
+    .cost-edit-col-hdr-merch span:last-child { display: none; }
+    .cost-edit-row-merch input[data-field="pack_size"] { display: none; }
+    .cost-edit-section-hdr { font-size: 11px; font-weight: 600; color: #4a4f66; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 4px; border-bottom: 1px solid #1e1e2e; }
 
     /* ── Header border ── */
     .header { margin-bottom: 22px; border-bottom: 1px solid #1e1e1e; padding-bottom: 20px; }
@@ -904,6 +907,7 @@
     <div class="sub-section" data-sub="hist-merch">
       <div class="history-controls">
         <div id="historyMerchMonthPills" class="history-month-pills"></div>
+        <button class="cost-edit-btn" id="openMerchCostEditBtn">Edit cost prices</button>
       </div>
       <div id="historyMerchContent"></div>
     </div><!-- /hist-merch -->
@@ -927,6 +931,7 @@
     </div>
     <div class="modal-footer" style="display:flex;align-items:center;gap:10px">
       <button class="banner-btn" id="costEditSaveBtn">Save</button>
+      <button class="banner-btn" id="costEditFillBtn" style="background:#1a1a2e;border:1px solid #2a2a3e">Fill from deliveries</button>
       <div class="form-status" id="costEditStatus"></div>
     </div>
   </div>
@@ -1152,9 +1157,12 @@ const EXACT_CAT = {
   'Latte - Small':'Coffee','Latte - Large':'Coffee',
   'Macchiato':'Coffee','Mocha - Small':'Coffee','Mocha - Large':'Coffee',
   'Hot Chocolate - Small':'Coffee','Hot Chocolate - Large':'Coffee',
-  'Iced Americano':'Coffee','Dirty Chai - Small':'Coffee','Dirty Chai - Large':'Coffee',
+  'Iced Americano':'Coffee','Iced Latte':'Coffee',
+  'Dirty Chai - Small':'Coffee','Dirty Chai - Large':'Coffee',
   'Tea':'Coffee',
   'Boost':'Shakes','Brunch':'Shakes','Cinnamon Swirl':'Shakes',
+  'Shake of the week':'Shakes',
+  'Grenade Bar':'Bars & Snacks',
   'Choco-Berry Cheesecake':'Shakes','PB&J':'Shakes','THE ONE PB':'Shakes',
   'Power (Lean)':'Shakes','Staff Shake':'Shakes',
   'Protein Powder - Whey':'Shakes','Protein Powder - Vegan':'Shakes',
@@ -1199,13 +1207,14 @@ const EXACT_PRICE = {
   'Shake Extras - Creatine':1.00,'Shake Extras - Banana':1.20,
   'Shake Extras - Berries':1.20,'Shake Extras - Nut Butter':1.20,
   'Shake Extras - Oats':1.20,
+  'Iced Latte':4.50,'Shake of the week':6.80,
   'ACTIPH Water':2.25,'Cano Water (330ml)':1.50,'C4 Energy':3.00,
   'Shower Towel':2.00,'Fob':10.00,
   'CREW SOCK - uk5-uk10':15.00,
 };
 
 const PREFIX_PRICE = [
-  ['Barebell Bars',2.75],['Misfit Bar',2.75],['UFit',3.00],
+  ['Barebell Bars',2.75],['Misfit Bar',2.75],['Grenade Bar',3.00],['UFit',3.00],
   ['Nocco',3.00],['Tenzing',2.25],['Vitamin Well',2.75],
   ['Cadence Electrolyte',3.00],
   ['Redbull - Editions',3.00],['Redbull',2.50],
@@ -1220,7 +1229,7 @@ const BRAND_PREFIXES = [
   ['Cadence Electrolyte','Cadence'],
   ['Nocco','Nocco'],['NOCCO','Nocco'],
   ['Barebell Bars','Barebell'],['Barebell Shake','Barebell'],['Barebell','Barebell'],
-  ['Misfit Bar','Misfit'],
+  ['Misfit Bar','Misfit'],['Grenade Bar','Grenade'],
   ['UFit','UFit'],
   ['Tenzing','Tenzing'],
   ['Vitamin Well','Vitamin Well'],
@@ -2865,35 +2874,71 @@ async function renderMerchStockHistory() {
     </div>`;
 }
 
-function openCostEditModal() {
+function openCostEditModal(focusSection = 'cafe') {
   const list = document.getElementById('costEditList');
-  const products = Object.values(productLookup)
-    .filter(p => p.category !== 'Merch' && p.active !== false)
-    .sort((a, b) => (a.display_name || a.product_name_raw).localeCompare(b.display_name || b.product_name_raw));
 
-  if (!products.length) {
-    list.innerHTML = '<div style="color:#666666;font-size:13px">No cafe products found in the product lookup.</div>';
-  } else {
-    list.innerHTML =
-      '<div class="cost-edit-col-hdr"><span>Cost £</span><span>Pack sz</span></div>' +
-      products.map(p => {
-        const name     = (p.display_name || p.product_name_raw).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-        const costVal  = p.cost_price  != null ? parseFloat(p.cost_price).toFixed(2) : '';
-        const packVal  = p.pack_size   != null ? parseInt(p.pack_size)               : '';
-        return `<div class="cost-edit-row">
-          <label>${name}</label>
-          <input type="number" step="0.01" min="0" placeholder="0.00"
-            data-key="${p.product_name_raw}" data-field="cost_price"
-            data-orig="${costVal}" value="${costVal}" title="Cost price £">
-          <input type="number" step="1" min="1" placeholder="—"
-            data-key="${p.product_name_raw}" data-field="pack_size"
-            data-orig="${packVal}" value="${packVal}" title="Units per pack / case">
-        </div>`;
-      }).join('');
+  const cafeProducts = Object.values(productLookup)
+    .filter(p => p.category !== 'Merch' && p.active !== false)
+    .sort((a, b) => (a.category || '').localeCompare(b.category || '') ||
+                    (a.display_name || a.product_name_raw).localeCompare(b.display_name || b.product_name_raw));
+
+  const merchProducts = Object.values(productLookup)
+    .filter(p => p.category === 'Merch' && p.active !== false)
+    .sort((a, b) => (a.display_name || a.product_name_raw).localeCompare(b.display_name || b.product_name_raw) ||
+                    (a.colourway || '').localeCompare(b.colourway || '') ||
+                    (a.size || '').localeCompare(b.size || ''));
+
+  const renderCafeRow = p => {
+    const name    = (p.display_name || p.product_name_raw).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const costVal = p.cost_price != null ? parseFloat(p.cost_price).toFixed(2) : '';
+    const packVal = p.pack_size  != null ? parseInt(p.pack_size)               : '';
+    return `<div class="cost-edit-row">
+      <label>${name}</label>
+      <input type="number" step="0.01" min="0" placeholder="0.00"
+        data-key="${p.product_name_raw}" data-field="cost_price"
+        data-orig="${costVal}" value="${costVal}" title="Cost price £">
+      <input type="number" step="1" min="1" placeholder="—"
+        data-key="${p.product_name_raw}" data-field="pack_size"
+        data-orig="${packVal}" value="${packVal}" title="Units per pack / case">
+    </div>`;
+  };
+
+  const renderMerchRow = p => {
+    const label   = (p.display_name || p.product_name_raw).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const variant = [p.colourway, p.size].filter(Boolean).join(' / ');
+    const costVal = p.cost_price != null ? parseFloat(p.cost_price).toFixed(2) : '';
+    return `<div class="cost-edit-row cost-edit-row-merch">
+      <label>${label}${variant ? ` <span style="color:#666666;font-weight:400">— ${variant}</span>` : ''}</label>
+      <input type="number" step="0.01" min="0" placeholder="0.00"
+        data-key="${p.product_name_raw}" data-field="cost_price"
+        data-orig="${costVal}" value="${costVal}" title="Cost price £">
+    </div>`;
+  };
+
+  let html = '';
+  if (cafeProducts.length) {
+    html += `<div class="cost-edit-section-hdr" id="costEditCafeHdr">Cafe &amp; Drinks</div>`;
+    html += `<div class="cost-edit-col-hdr"><span>Cost £</span><span>Pack sz</span></div>`;
+    html += cafeProducts.map(renderCafeRow).join('');
   }
+  if (merchProducts.length) {
+    html += `<div class="cost-edit-section-hdr" id="costEditMerchHdr" style="margin-top:18px">Merch <span style="font-size:11px;font-weight:400;color:#666666">(cost per unit)</span></div>`;
+    html += `<div class="cost-edit-col-hdr cost-edit-col-hdr-merch"><span>Cost £</span></div>`;
+    html += merchProducts.map(renderMerchRow).join('');
+  }
+  if (!html) {
+    html = '<div style="color:#666666;font-size:13px">No products found in the product lookup.</div>';
+  }
+  list.innerHTML = html;
 
   document.getElementById('costEditStatus').textContent = '';
   document.getElementById('costEditModal').classList.add('open');
+
+  // Scroll to the relevant section
+  if (focusSection === 'merch') {
+    const el = document.getElementById('costEditMerchHdr');
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  }
 }
 
 async function saveCostPrices() {
@@ -2945,6 +2990,46 @@ async function saveCostPrices() {
     status.textContent = `${saved} saved, ${failed} failed.`;
   }
   btn.disabled = false;
+}
+
+async function fillCostFromDeliveries() {
+  const status = document.getElementById('costEditStatus');
+  status.style.color = '#666666';
+  status.textContent = 'Loading delivery data…';
+
+  const deliveries = await loadDeliveries();
+
+  // Build product → latest delivery with a non-null unit_price
+  const latestDelivPrice = {};
+  for (const d of deliveries) {
+    if (!d.product_name_raw || d.unit_price === null || d.unit_price === undefined) continue;
+    const existing = latestDelivPrice[d.product_name_raw];
+    if (!existing || d.delivery_date > existing.date) {
+      latestDelivPrice[d.product_name_raw] = { price: parseFloat(d.unit_price), date: d.delivery_date };
+    }
+  }
+
+  const inputs = document.querySelectorAll('#costEditList input[data-field="cost_price"]');
+  let filled = 0;
+  for (const inp of inputs) {
+    if (inp.value !== '') continue; // never overwrite existing values
+    const key     = inp.dataset.key;
+    const product = productLookup[key];
+    const entry   = latestDelivPrice[key];
+    if (!product || !entry) continue;
+
+    let cost = entry.price;
+    // MF stores case price; divide by pack_size to get per-unit cost
+    if (product.category !== 'Merch' && product.pack_size) {
+      cost = cost / product.pack_size;
+    }
+    inp.value = cost.toFixed(2);
+    filled++;
+  }
+
+  status.textContent = filled
+    ? `Filled ${filled} product${filled !== 1 ? 's' : ''} from latest deliveries. Review then Save.`
+    : 'No new data to fill (products already have values or no delivery data found).';
 }
 
 async function renderOrderPrediction() {
@@ -3605,7 +3690,7 @@ function extractInvoiceItems(text) {
 
   // Fix 4: broadened SKU regex — allow alphanumeric suffix e.g. "39495A"
   const SKU_RE  = /\s+(?:\d{4,}[A-Za-z]?|[A-Z0-9]{2,5}-[A-Z0-9-]+)\s*$/i;
-  const SHIP_RE = /Shipped\s*:\s*(\d+)/i;
+  const SHIP_RE = /(?:Shipped|Despatched|Dispatched)\s*:\s*(\d+)/i;
   const SKIP_RE = /^(Product\s*Name|SKU|Price|Qty|Subtotal|Grand\s*Total|Shipping|Tax|Order\s*#|Order\s*Date|http)/i;
 
   for (let i = 0; i < lines.length; i++) {
@@ -3694,6 +3779,7 @@ function extractInvoiceItems(text) {
         if (sm) { shippedQty = parseInt(sm[1]); break; }
       }
     }
+    if (shippedQty === null) shippedQty = orderedQty; // fallback when Shipped: line absent
     if (!shippedQty || shippedQty < 1) continue;
 
     // Split on | — left = base product (with pack), right = variant + SKU
@@ -3986,11 +4072,26 @@ async function handleInvoicePdfs(files) {
         }
       }
 
+      // If Muscle Finesse yields nothing with the default bucket, try wider buckets.
+      // MF changed their PDF layout occasionally which shifts row Y-coordinates.
+      if (supplier === 'muscle-finesse' && items.length === 0) {
+        for (const bucket of [3, 4, 5]) {
+          console.debug('[MF] 0 items with previous bucket, retrying with bucket=%d', bucket);
+          const text2  = await parseInvoicePDF(file, bucket);
+          const items2 = extractInvoiceItems(text2);
+          if (items2.length > 0) {
+            console.debug('[MF] bucket=%d yielded %d items — using that', bucket, items2.length);
+            text = text2; lines = text2.split('\n').map(l => l.trim()).filter(Boolean); items = items2;
+            break;
+          }
+        }
+      }
+
       if (!items.length) {
         console.debug(`[Invoice Parser] No items found in "${file.name}". Raw text:\n` + text);
       }
 
-      if (supplier === 'tapstitch') debugPerFile.push({ name: file.name, lines });
+      debugPerFile.push({ name: file.name, lines, supplier });
 
       // Tag each item with its source invoice date + order number
       const date  = parseInvoiceDate(text);
@@ -4000,7 +4101,7 @@ async function handleInvoicePdfs(files) {
       invoiceMetas.push({ date, order, count: items.length, name: file.name });
     }
 
-    window._pdfDebugPerFile = debugPerFile.length ? debugPerFile : null;
+    window._pdfDebugPerFile = debugPerFile.filter(f => f.supplier === 'tapstitch').length ? debugPerFile.filter(f => f.supplier === 'tapstitch') : null;
 
     document.getElementById('pdfParsing').style.display    = 'none';
     document.getElementById('pdfReviewArea').style.display = '';
@@ -4009,10 +4110,13 @@ async function handleInvoicePdfs(files) {
     document.getElementById('pdfDeliveryDateRow').style.display = '';
 
     if (!allItems.length) {
+      const rawSnippet = debugPerFile.map(f =>
+        f.lines.slice(0, 60).map((l, i) => `${String(i+1).padStart(3)}: ${l}`).join('\n')
+      ).join('\n\n--- next file ---\n\n') || '(no text extracted — PDF may be image-based)';
       document.getElementById('pdfInvoiceMeta').innerHTML =
-        '<span style="color:#f87171">Could not extract line items from ' +
-        (validFiles.length > 1 ? 'any of the PDFs' : 'the PDF') +
-        '. Open browser console (F12 → Console) and share the debug output.</span>';
+        `<span style="color:#f87171">Could not extract line items from ${validFiles.length > 1 ? 'any of the PDFs' : 'the PDF'}.</span>` +
+        `<details style="margin-top:8px;font-size:11px"><summary style="cursor:pointer;color:#888;user-select:none">Show extracted text (share with support)</summary>` +
+        `<pre style="max-height:260px;overflow:auto;background:#0d1117;color:#8b949e;padding:8px;border-radius:4px;margin-top:4px;font-size:10px;line-height:1.4;white-space:pre-wrap">${rawSnippet.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre></details>`;
       return;
     }
 
@@ -4397,12 +4501,14 @@ async function init() {
   });
 
   // ── Cost price edit modal ──
-  document.getElementById('openCostEditBtn').addEventListener('click', openCostEditModal);
+  document.getElementById('openCostEditBtn').addEventListener('click', () => openCostEditModal('cafe'));
+  document.getElementById('openMerchCostEditBtn').addEventListener('click', () => openCostEditModal('merch'));
   document.getElementById('costEditClose').addEventListener('click', () => document.getElementById('costEditModal').classList.remove('open'));
   document.getElementById('costEditModal').addEventListener('click', e => {
     if (e.target === document.getElementById('costEditModal')) document.getElementById('costEditModal').classList.remove('open');
   });
   document.getElementById('costEditSaveBtn').addEventListener('click', saveCostPrices);
+  document.getElementById('costEditFillBtn').addEventListener('click', fillCostFromDeliveries);
 
   // Step 1: mode selection
   window._pdfSupplier = null;
