@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONE LDN Shop — Prototype (New Tabs)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #111111; color: #e0e0e0; font-family: 'Inter', system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* ── Banner ── */
+  .banner { background: #1a1a1a; border-bottom: 1px solid #2a2a2a; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+  .banner h1 { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 0.02em; }
+  .prototype-badge { background: #e8c547; color: #111; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 3px; letter-spacing: 0.05em; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid #2a2a2a; background: #1a1a1a; padding: 0 20px; overflow-x: auto; }
+  .tab { padding: 11px 18px; font-size: 13px; font-weight: 500; color: #888; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; white-space: nowrap; }
+  .tab:hover { color: #ccc; }
+  .tab.active { color: #fff; border-bottom-color: #e8c547; }
+
+  /* ── Section ── */
+  .section { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  .section.active { display: block; }
+
+  /* ── Week nav bar ── */
+  .week-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .week-nav button { background: #252525; border: 1px solid #333; color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: background .15s; }
+  .week-nav button:hover { background: #2e2e2e; color: #fff; }
+  .week-nav .week-label { font-size: 15px; font-weight: 600; color: #fff; padding: 0 4px; }
+  .week-nav select { background: #252525; border: 1px solid #333; color: #ccc; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+
+  /* ── Segment toggle ── */
+  .seg-toggle { display: flex; gap: 6px; margin-bottom: 18px; }
+  .seg-btn { background: #1e1e1e; border: 1px solid #333; color: #888; padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; }
+  .seg-btn:hover { color: #ccc; border-color: #555; }
+  .seg-btn.active { background: #e8c547; border-color: #e8c547; color: #111; font-weight: 700; }
+
+  /* ── KPI cards row ── */
+  .kpi-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+  .kpi-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px 18px; min-width: 155px; flex: 1; }
+  .kpi-cat { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; }
+  .kpi-units { font-size: 24px; font-weight: 700; color: #fff; line-height: 1.1; }
+  .kpi-rev { font-size: 13px; color: #888; margin-top: 3px; }
+  .kpi-delta { font-size: 11px; margin-top: 4px; }
+  .kpi-delta.up { color: #4ade80; }
+  .kpi-delta.down { color: #f87171; }
+
+  /* ── Cat colours ── */
+  .cat-coffee   { color: #f87171; }
+  .cat-shakes   { color: #e8c547; }
+  .cat-bars     { color: #fb923c; }
+  .cat-func     { color: #4ade80; }
+  .cat-merch    { color: #74b9ff; }
+  .cat-services { color: #888; }
+
+  /* ── Table card ── */
+  .table-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #151515; color: #666; font-weight: 600; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; padding: 10px 14px; text-align: left; border-bottom: 1px solid #2a2a2a; }
+  thead th.right { text-align: right; }
+  tbody tr { border-bottom: 1px solid #1f1f1f; transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #1f1f1f; }
+  tbody td { padding: 10px 14px; color: #ddd; }
+  tbody td.right { text-align: right; }
+  tbody td.muted { color: #666; font-size: 12px; }
+  tfoot tr { background: #151515; border-top: 1px solid #2a2a2a; }
+  tfoot td { padding: 10px 14px; font-weight: 600; color: #fff; }
+  tfoot td.right { text-align: right; }
+
+  /* ── Rank badge ── */
+  .rank { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #252525; color: #888; font-size: 11px; font-weight: 700; }
+  .rank-1 { background: #e8c547; color: #111; }
+  .rank-2 { background: #b0b0b0; color: #111; }
+  .rank-3 { background: #cd7f32; color: #111; }
+
+  /* ── Cat badge ── */
+  .badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.04em; }
+  .badge-coffee   { background: #2a1515; color: #f87171; }
+  .badge-shakes   { background: #2a2510; color: #e8c547; }
+  .badge-bars     { background: #2a1c10; color: #fb923c; }
+  .badge-func     { background: #102a15; color: #4ade80; }
+  .badge-merch    { background: #101d2a; color: #74b9ff; }
+  .badge-services { background: #1e1e1e; color: #888; }
+
+  /* ── Pct bar ── */
+  .pct-bar { display: flex; align-items: center; gap: 8px; }
+  .pct-track { flex: 1; height: 4px; background: #252525; border-radius: 2px; min-width: 60px; }
+  .pct-fill  { height: 4px; border-radius: 2px; background: #e8c547; }
+  .pct-label { font-size: 11px; color: #888; min-width: 32px; text-align: right; }
+
+  /* ── Reconciliation table specifics ── */
+  .opening  { color: #74b9ff; }
+  .deliv-in { color: #4ade80; }
+  .sold-col { color: #f87171; }
+  .theor    { color: #e8c547; }
+  .variance-pos { color: #4ade80; font-weight: 600; }
+  .variance-neg { color: #f87171; font-weight: 600; }
+
+  /* ── Closing balance cell ── */
+  .cb-cell { position: relative; cursor: pointer; }
+  .cb-value { display: inline-block; padding: 3px 8px; border-radius: 5px; background: #1f3020; color: #4ade80; font-weight: 600; }
+  .cb-empty { display: inline-block; padding: 3px 8px; border-radius: 5px; border: 1px dashed #444; color: #555; font-size: 12px; cursor: pointer; transition: border-color .15s, color .15s; }
+  .cb-empty:hover { border-color: #e8c547; color: #e8c547; }
+  .cb-input-wrap { display: none; position: absolute; z-index: 100; background: #222; border: 1px solid #e8c547; border-radius: 8px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.5); right: 0; top: 36px; min-width: 180px; }
+  .cb-input-wrap.open { display: block; }
+  .cb-input-wrap input { width: 100%; background: #111; border: 1px solid #333; border-radius: 5px; color: #fff; padding: 6px 10px; font-size: 14px; margin-bottom: 6px; }
+  .cb-input-wrap input:focus { outline: none; border-color: #e8c547; }
+  .cb-input-wrap textarea { width: 100%; background: #111; border: 1px solid #333; border-radius: 5px; color: #ccc; padding: 6px 10px; font-size: 12px; resize: none; height: 46px; }
+  .cb-input-wrap textarea:focus { outline: none; border-color: #555; }
+  .cb-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .cb-save { background: #e8c547; color: #111; border: none; border-radius: 5px; padding: 5px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .cb-cancel { background: #252525; color: #888; border: 1px solid #333; border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+
+  /* ── Flash animation ── */
+  @keyframes flashGreen { 0% { background: #1f3020; } 50% { background: #14532d; } 100% { background: #1f3020; } }
+  .flash { animation: flashGreen 0.6s ease; }
+
+  /* ── Section label ── */
+  .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #555; margin-bottom: 10px; }
+
+  /* ── Overview product highlights ── */
+  .highlights-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+  .highlights-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 16px; }
+  .highlights-card h3 { font-size: 12px; font-weight: 600; color: #666; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 12px; }
+  .highlight-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1f1f1f; }
+  .highlight-row:last-child { border-bottom: none; }
+  .hl-rank { font-size: 12px; font-weight: 700; color: #555; width: 18px; text-align: center; }
+  .hl-name { flex: 1; font-size: 13px; color: #ddd; }
+  .hl-val  { font-size: 13px; color: #888; text-align: right; min-width: 50px; }
+  .hl-trend-up   { color: #4ade80; font-size: 11px; }
+  .hl-trend-down { color: #f87171; font-size: 11px; }
+
+  /* ── Existing revenue overview mock ── */
+  .overview-mock { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 24px; text-align: center; color: #333; font-size: 13px; margin-bottom: 20px; }
+  .overview-mock span { color: #555; }
+
+  /* ── No-data ── */
+  .empty { text-align: center; color: #444; padding: 40px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  <h1>ONE LDN Shop Dashboard</h1>
+  <span class="prototype-badge">PROTOTYPE</span>
+  <span style="color:#555; font-size:12px; margin-left:4px">— new tabs only, static mock data</span>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="weekly">Weekly Report</button>
+  <button class="tab" data-tab="reconcile">Stock Reconciliation</button>
+  <button class="tab" data-tab="overview">Overview</button>
+  <button class="tab" data-tab="sellers" style="color:#444;">Top Sellers ↗</button>
+  <button class="tab" data-tab="trends"  style="color:#444;">Trends ↗</button>
+  <button class="tab" data-tab="predict" style="color:#444;">Order Prediction ↗</button>
+  <button class="tab" data-tab="history" style="color:#444;">Stock History ↗</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB 1: WEEKLY REPORT
+═══════════════════════════════════════════════════════════ -->
+<div class="section active" data-tab="weekly">
+
+  <!-- Week navigation -->
+  <div class="week-nav">
+    <button id="wr-prev">← Prev</button>
+    <span class="week-label" id="wr-label">Loading…</span>
+    <button id="wr-next">Next →</button>
+    <select id="wr-select"></select>
+  </div>
+
+  <!-- Segment toggle -->
+  <div class="seg-toggle">
+    <button class="seg-btn active" data-seg="all">All Products</button>
+    <button class="seg-btn" data-seg="cafe">Café</button>
+    <button class="seg-btn" data-seg="merch">Merch</button>
+  </div>
+
+  <!-- KPI cards: per category -->
+  <div class="section-label">This Week by Category</div>
+  <div class="kpi-row" id="wr-kpis"></div>
+
+  <!-- Products table -->
+  <div class="section-label" style="margin-top:4px">Products — sorted by units sold</div>
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:42px">#</th>
+          <th>Product</th>
+          <th>Category</th>
+          <th class="right">Units Sold</th>
+          <th class="right">Revenue</th>
+          <th class="right" style="min-width:140px">% of Segment</th>
+        </tr>
+      </thead>
+      <tbody id="wr-tbody"></tbody>
+      <tfoot id="wr-tfoot"></tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB 2: STOCK RECONCILIATION
+═══════════════════════════════════════════════════════════ -->
+<div class="section" data-tab="reconcile">
+
+  <!-- Week navigation -->
+  <div class="week-nav">
+    <button id="rc-prev">← Prev</button>
+    <span class="week-label" id="rc-label">Loading…</span>
+    <button id="rc-next">Next →</button>
+    <select id="rc-select"></select>
+  </div>
+
+  <!-- Segment toggle (no All) -->
+  <div class="seg-toggle">
+    <button class="seg-btn active" data-rseg="cafe">Café</button>
+    <button class="seg-btn" data-rseg="merch">Merch</button>
+  </div>
+
+  <!-- Info row -->
+  <p style="color:#555; font-size:12px; margin-bottom:16px; line-height:1.6">
+    <strong style="color:#888">Opening Stock</strong> = previous week's closing balance &nbsp;·&nbsp;
+    <strong style="color:#888">Theoretical</strong> = Opening + Deliveries − Sold &nbsp;·&nbsp;
+    <strong style="color:#888">Closing Balance</strong> = click to enter physical count
+  </p>
+
+  <!-- Reconciliation table -->
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th class="right opening">Opening Stock</th>
+          <th class="right deliv-in">+ Deliveries</th>
+          <th class="right sold-col">− Sold</th>
+          <th class="right theor">= Theoretical</th>
+          <th class="right" style="min-width:140px">Closing Balance</th>
+          <th class="right">Variance</th>
+        </tr>
+      </thead>
+      <tbody id="rc-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB 3: OVERVIEW (with new product highlights section)
+═══════════════════════════════════════════════════════════ -->
+<div class="section" data-tab="overview">
+
+  <div class="overview-mock">
+    <span>↑ Existing revenue KPI cards, weekly revenue chart, and category donut chart appear here (unchanged)</span>
+  </div>
+
+  <!-- NEW: Product highlights section -->
+  <div class="section-label">Product Highlights — Latest Week</div>
+  <div class="highlights-row">
+    <div class="highlights-card">
+      <h3>🔥 Top 5 This Week</h3>
+      <div class="highlight-row">
+        <div class="hl-rank">1</div>
+        <div class="hl-name">Espresso</div>
+        <div class="hl-val">142 units</div>
+        <div class="hl-trend-up">▲ 12%</div>
+      </div>
+      <div class="highlight-row">
+        <div class="hl-rank">2</div>
+        <div class="hl-name">Nocco BCAA Citrus</div>
+        <div class="hl-val">38 units</div>
+        <div class="hl-trend-up">▲ 5%</div>
+      </div>
+      <div class="highlight-row">
+        <div class="hl-rank">3</div>
+        <div class="hl-name">Protein Shake (Vanilla)</div>
+        <div class="hl-val">31 units</div>
+        <div class="hl-trend-down">▼ 3%</div>
+      </div>
+      <div class="highlight-row">
+        <div class="hl-rank">4</div>
+        <div class="hl-name">Grenade Bar Chocolate</div>
+        <div class="hl-val">28 units</div>
+        <div class="hl-trend-up">▲ 8%</div>
+      </div>
+      <div class="highlight-row">
+        <div class="hl-rank">5</div>
+        <div class="hl-name">Flat White</div>
+        <div class="hl-val">24 units</div>
+        <div class="hl-trend-down">▼ 1%</div>
+      </div>
+    </div>
+    <div class="highlights-card">
+      <h3>🐢 Slowest Active Products</h3>
+      <div class="highlight-row">
+        <div class="hl-rank" style="color:#f87171">!</div>
+        <div class="hl-name">ACTIPH Water 500ml</div>
+        <div class="hl-val" style="color:#f87171">0.8/wk</div>
+      </div>
+      <div class="highlight-row">
+        <div class="hl-rank" style="color:#f87171">!</div>
+        <div class="hl-name">Barebells Caramel Bar</div>
+        <div class="hl-val" style="color:#f87171">1.1/wk</div>
+      </div>
+      <div class="highlight-row">
+        <div class="hl-rank" style="color:#fb923c">!</div>
+        <div class="hl-name">Nocco BCAA Mango</div>
+        <div class="hl-val" style="color:#fb923c">1.5/wk</div>
+      </div>
+      <div class="highlight-row">
+        <div class="hl-rank" style="color:#fb923c">!</div>
+        <div class="hl-name">Protein Bar (Salted)</div>
+        <div class="hl-val" style="color:#fb923c">1.8/wk</div>
+      </div>
+      <div class="highlight-row">
+        <div class="hl-rank" style="color:#888">·</div>
+        <div class="hl-name">Sparkling Water 330ml</div>
+        <div class="hl-val">2.1/wk</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Placeholder stubs for unchanged tabs -->
+<div class="section" data-tab="sellers"><div class="empty">Top Sellers tab — unchanged from current dashboard</div></div>
+<div class="section" data-tab="trends"><div class="empty">Trends tab — unchanged from current dashboard</div></div>
+<div class="section" data-tab="predict"><div class="empty">Order Prediction tab — unchanged from current dashboard</div></div>
+<div class="section" data-tab="history"><div class="empty">Stock History tab — unchanged from current dashboard</div></div>
+
+<script>
+// ── Mock data ──────────────────────────────────────────────
+const WEEKS = [
+  '2025-05-12','2025-05-19','2025-05-26',
+  '2025-06-02','2025-06-09','2025-06-16',
+  '2025-06-23',
+];
+
+const SALES = {
+  '2025-06-23': [
+    { product:'Espresso',             category:'Coffee',           units:142, rev:426.00 },
+    { product:'Flat White',           category:'Coffee',           units:24,  rev:96.00  },
+    { product:'Cappuccino',           category:'Coffee',           units:18,  rev:72.00  },
+    { product:'Protein Shake Vanilla',category:'Shakes',           units:31,  rev:155.00 },
+    { product:'Protein Shake Choc',   category:'Shakes',           units:22,  rev:110.00 },
+    { product:'Grenade Choc Bar',     category:'Bars & Snacks',    units:28,  rev:67.20  },
+    { product:'Barebells Caramel',    category:'Bars & Snacks',    units:9,   rev:22.50  },
+    { product:'Nocco Citrus',         category:'Functional Drinks',units:38,  rev:95.00  },
+    { product:'Nocco Mango',          category:'Functional Drinks',units:11,  rev:27.50  },
+    { product:'ACTIPH Water',         category:'Functional Drinks',units:6,   rev:12.00  },
+    { product:'ONE LDN Hoodie (S)',   category:'Merch',            units:3,   rev:135.00 },
+    { product:'ONE LDN Tee Black (M)',category:'Merch',            units:5,   rev:150.00 },
+    { product:'ONE LDN Cap',          category:'Merch',            units:4,   rev:80.00  },
+  ],
+  '2025-06-16': [
+    { product:'Espresso',             category:'Coffee',           units:128, rev:384.00 },
+    { product:'Flat White',           category:'Coffee',           units:21,  rev:84.00  },
+    { product:'Protein Shake Vanilla',category:'Shakes',           units:27,  rev:135.00 },
+    { product:'Protein Shake Choc',   category:'Shakes',           units:19,  rev:95.00  },
+    { product:'Grenade Choc Bar',     category:'Bars & Snacks',    units:24,  rev:57.60  },
+    { product:'Nocco Citrus',         category:'Functional Drinks',units:36,  rev:90.00  },
+    { product:'Nocco Mango',          category:'Functional Drinks',units:9,   rev:22.50  },
+    { product:'ONE LDN Tee Black (M)',category:'Merch',            units:4,   rev:120.00 },
+    { product:'ONE LDN Cap',          category:'Merch',            units:3,   rev:60.00  },
+  ],
+};
+
+// Stock takes (closing balance entered manually — mock data)
+let stockTakes = {
+  // prev week entries (opening for 2025-06-23)
+  'Espresso::2025-06-16':             { qty: 12 },
+  'Protein Shake Vanilla::2025-06-16':{ qty: 8  },
+  'Protein Shake Choc::2025-06-16':   { qty: 5  },
+  'Nocco Citrus::2025-06-16':         { qty: 14 },
+  'Grenade Choc Bar::2025-06-16':     { qty: 22 },
+  // current week entries (2025-06-23 — partially done)
+  'Espresso::2025-06-23':             { qty: 10 },
+  'Nocco Citrus::2025-06-23':         { qty: 18 },
+};
+
+// Deliveries received (simplified mock)
+const DELIVERIES = {
+  '2025-06-23': [
+    { product:'Nocco Citrus',          qty: 24 },
+    { product:'Protein Shake Vanilla', qty: 12 },
+    { product:'ONE LDN Tee Black (M)', qty: 10 },
+  ],
+  '2025-06-16': [
+    { product:'Grenade Choc Bar',       qty: 36 },
+    { product:'Nocco Citrus',           qty: 24 },
+  ],
+};
+
+const CAFE_CATS = ['Coffee','Shakes','Bars & Snacks','Functional Drinks','Services'];
+
+const CAT_BADGE = {
+  'Coffee':            'coffee',
+  'Shakes':            'shakes',
+  'Bars & Snacks':     'bars',
+  'Functional Drinks': 'func',
+  'Merch':             'merch',
+  'Services':          'services',
+};
+
+const CAT_COLORS = {
+  'Coffee':            '#f87171',
+  'Shakes':            '#e8c547',
+  'Bars & Snacks':     '#fb923c',
+  'Functional Drinks': '#4ade80',
+  'Merch':             '#74b9ff',
+  'Services':          '#888',
+};
+
+// ── State ─────────────────────────────────────────────────
+let wrWeekIdx   = WEEKS.length - 1;  // index into WEEKS array
+let wrSegment   = 'all';
+let rcWeekIdx   = WEEKS.length - 1;
+let rcSegment   = 'cafe';
+
+// ── Helpers ───────────────────────────────────────────────
+function fmtCurrency(n) {
+  return '£' + n.toFixed(2);
+}
+
+function fmtWeek(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  const sun = new Date(d); sun.setDate(d.getDate() + 6);
+  const opts = { day:'numeric', month:'short' };
+  return d.toLocaleDateString('en-GB', opts) + ' – ' + sun.toLocaleDateString('en-GB', { ...opts, year:'2-digit' });
+}
+
+function badge(cat) {
+  const key = CAT_BADGE[cat] || 'services';
+  return `<span class="badge badge-${key}">${cat}</span>`;
+}
+
+// ── Weekly Report ──────────────────────────────────────────
+function buildWrSelect() {
+  const sel = document.getElementById('wr-select');
+  sel.innerHTML = WEEKS.slice().reverse().map((w, i) => {
+    const idx = WEEKS.length - 1 - i;
+    return `<option value="${idx}"${idx === wrWeekIdx ? ' selected' : ''}>${fmtWeek(WEEKS[idx])}</option>`;
+  }).join('');
+  sel.onchange = () => { wrWeekIdx = +sel.value; renderWeeklyReport(); };
+}
+
+function renderWeeklyReport() {
+  const week  = WEEKS[wrWeekIdx];
+  const rows  = SALES[week] || [];
+  const isCafe  = r => CAFE_CATS.includes(r.category);
+  const filtered = wrSegment === 'cafe' ? rows.filter(isCafe)
+                 : wrSegment === 'merch' ? rows.filter(r => r.category === 'Merch')
+                 : rows;
+
+  // Week label + nav
+  document.getElementById('wr-label').textContent = fmtWeek(week);
+  document.getElementById('wr-prev').disabled = wrWeekIdx === 0;
+  document.getElementById('wr-next').disabled = wrWeekIdx === WEEKS.length - 1;
+
+  // KPI cards: group by category
+  const cats = [...new Set(filtered.map(r => r.category))].sort((a,b) => {
+    const order = ['Coffee','Shakes','Bars & Snacks','Functional Drinks','Services','Merch'];
+    return (order.indexOf(a) ?? 99) - (order.indexOf(b) ?? 99);
+  });
+
+  const prevWeek = wrWeekIdx > 0 ? WEEKS[wrWeekIdx - 1] : null;
+  const prevRows = prevWeek ? (SALES[prevWeek] || []) : [];
+
+  document.getElementById('wr-kpis').innerHTML = cats.map(cat => {
+    const catRows = filtered.filter(r => r.category === cat);
+    const units   = catRows.reduce((s, r) => s + r.units, 0);
+    const rev     = catRows.reduce((s, r) => s + r.rev,   0);
+    const prevU   = prevRows.filter(r => r.category === cat).reduce((s,r) => s + r.units, 0);
+    const delta   = prevU ? ((units - prevU) / prevU * 100) : null;
+    const dCls    = delta === null ? '' : delta >= 0 ? 'up' : 'down';
+    const dStr    = delta === null ? '' : (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% vs prev wk';
+    const bKey    = CAT_BADGE[cat] || 'services';
+    return `<div class="kpi-card">
+      <div class="kpi-cat cat-${bKey}">${cat}</div>
+      <div class="kpi-units">${units} <span style="font-size:13px;font-weight:400;color:#666">units</span></div>
+      <div class="kpi-rev">${fmtCurrency(rev)}</div>
+      ${dStr ? `<div class="kpi-delta ${dCls}">${dStr}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  // Products table
+  const sorted = [...filtered].sort((a,b) => b.units - a.units);
+  const totUnits = filtered.reduce((s,r) => s + r.units, 0);
+  const totRev   = filtered.reduce((s,r) => s + r.rev,   0);
+
+  document.getElementById('wr-tbody').innerHTML = sorted.map((r, i) => {
+    const rnk = i < 3 ? `<span class="rank rank-${i+1}">${i+1}</span>` : `<span class="rank">${i+1}</span>`;
+    const pct = totUnits > 0 ? (r.units / totUnits * 100) : 0;
+    const bar = `<div class="pct-bar">
+      <div class="pct-track"><div class="pct-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      <div class="pct-label">${pct.toFixed(1)}%</div>
+    </div>`;
+    return `<tr>
+      <td>${rnk}</td>
+      <td>${r.product}</td>
+      <td>${badge(r.category)}</td>
+      <td class="right">${r.units}</td>
+      <td class="right">${fmtCurrency(r.rev)}</td>
+      <td class="right">${bar}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('wr-tfoot').innerHTML = `<tr>
+    <td></td>
+    <td><strong>Total</strong></td>
+    <td></td>
+    <td class="right">${totUnits}</td>
+    <td class="right">${fmtCurrency(totRev)}</td>
+    <td></td>
+  </tr>`;
+
+  // Re-sync select
+  buildWrSelect();
+}
+
+// ── Stock Reconciliation ───────────────────────────────────
+function buildRcSelect() {
+  const sel = document.getElementById('rc-select');
+  sel.innerHTML = WEEKS.slice().reverse().map((w, i) => {
+    const idx = WEEKS.length - 1 - i;
+    return `<option value="${idx}"${idx === rcWeekIdx ? ' selected' : ''}>${fmtWeek(WEEKS[idx])}</option>`;
+  }).join('');
+  sel.onchange = () => { rcWeekIdx = +sel.value; renderReconciliation(); };
+}
+
+function getOpeningStock(product, weekIdx) {
+  if (weekIdx === 0) return null;
+  const prevWeek = WEEKS[weekIdx - 1];
+  const key = product + '::' + prevWeek;
+  return stockTakes[key] ? stockTakes[key].qty : null;
+}
+
+function getDeliveries(product, week) {
+  return (DELIVERIES[week] || []).filter(d => d.product === product).reduce((s,d) => s + d.qty, 0);
+}
+
+function getSold(product, week) {
+  return (SALES[week] || []).filter(r => r.product === product).reduce((s,r) => s + r.units, 0);
+}
+
+function renderReconciliation() {
+  const week = WEEKS[rcWeekIdx];
+  document.getElementById('rc-label').textContent = fmtWeek(week);
+  document.getElementById('rc-prev').disabled = rcWeekIdx === 0;
+  document.getElementById('rc-next').disabled = rcWeekIdx === WEEKS.length - 1;
+
+  // All products that appear in sales or deliveries for this segment
+  const salesRows = SALES[week] || [];
+  const delivRows = DELIVERIES[week] || [];
+  const isCafe = name => {
+    const r = salesRows.find(s => s.product === name);
+    if (r) return CAFE_CATS.includes(r.category);
+    return true; // default for delivery-only items
+  };
+
+  const allProducts = [...new Set([
+    ...salesRows.map(r => r.product),
+    ...delivRows.map(d => d.product),
+  ])].filter(p => rcSegment === 'cafe' ? isCafe(p) : !isCafe(p));
+
+  const rows = allProducts.map(product => {
+    const opening  = getOpeningStock(product, rcWeekIdx);
+    const delivIn  = getDeliveries(product, week);
+    const sold     = getSold(product, week);
+    const theor    = opening !== null ? (opening + delivIn - sold) : null;
+    const stKey    = product + '::' + week;
+    const closing  = stockTakes[stKey] ? stockTakes[stKey].qty : null;
+    const variance = (closing !== null && theor !== null) ? (closing - theor) : null;
+    const salesInfo = salesRows.find(r => r.product === product);
+    const category  = salesInfo ? salesInfo.category : 'Café';
+    return { product, category, opening, delivIn, sold, theor, closing, variance, stKey };
+  }).sort((a,b) => a.product.localeCompare(b.product));
+
+  document.getElementById('rc-tbody').innerHTML = rows.map(r => {
+    const openStr  = r.opening  !== null ? r.opening  : '<span style="color:#444">—</span>';
+    const delivStr = r.delivIn  > 0      ? `<span class="deliv-in">+${r.delivIn}</span>` : '<span style="color:#444">—</span>';
+    const soldStr  = r.sold     > 0      ? `<span class="sold-col">−${r.sold}</span>`    : '<span style="color:#444">—</span>';
+    const theorStr = r.theor    !== null ? `<span class="theor">${r.theor}</span>`       : '<span style="color:#444">—</span>';
+
+    const varStr = r.variance !== null
+      ? `<span class="${r.variance >= 0 ? 'variance-pos' : 'variance-neg'}">${r.variance >= 0 ? '+' : ''}${r.variance}</span>`
+      : '<span style="color:#333">—</span>';
+
+    const cbHtml = r.closing !== null
+      ? `<span class="cb-value" onclick="openCbInput('${r.stKey}', this, ${r.closing})">${r.closing}</span>`
+      : `<span class="cb-empty" onclick="openCbInput('${r.stKey}', this, null)">+ enter count</span>`;
+
+    return `<tr id="row-${r.stKey.replace(/[^a-z0-9]/gi,'_')}">
+      <td>${r.product} ${badge(r.category)}</td>
+      <td class="right">${openStr}</td>
+      <td class="right">${delivStr}</td>
+      <td class="right">${soldStr}</td>
+      <td class="right">${theorStr}</td>
+      <td class="right cb-cell" style="position:relative">
+        ${cbHtml}
+        <div class="cb-input-wrap" id="cbw-${r.stKey.replace(/[^a-z0-9]/gi,'_')}">
+          <div style="font-size:11px;color:#888;margin-bottom:6px">Physical count for <strong style="color:#ddd">${r.product}</strong></div>
+          <input type="number" min="0" id="cbi-${r.stKey.replace(/[^a-z0-9]/gi,'_')}" placeholder="qty counted" />
+          <textarea id="cbn-${r.stKey.replace(/[^a-z0-9]/gi,'_')}" placeholder="notes (optional)"></textarea>
+          <div class="cb-actions">
+            <button class="cb-save" onclick="saveCb('${r.stKey}')">Save</button>
+            <button class="cb-cancel" onclick="closeCbInput('${r.stKey}')">Cancel</button>
+          </div>
+        </div>
+      </td>
+      <td class="right">${varStr}</td>
+    </tr>`;
+  }).join('');
+
+  buildRcSelect();
+}
+
+function openCbInput(stKey, el, currentVal) {
+  // Close any other open inputs first
+  document.querySelectorAll('.cb-input-wrap.open').forEach(w => w.classList.remove('open'));
+  const safeKey = stKey.replace(/[^a-z0-9]/gi,'_');
+  const wrap = document.getElementById('cbw-' + safeKey);
+  const inp  = document.getElementById('cbi-' + safeKey);
+  if (wrap) {
+    wrap.classList.add('open');
+    if (inp) { inp.value = currentVal !== null ? currentVal : ''; inp.focus(); }
+  }
+}
+
+function closeCbInput(stKey) {
+  const safeKey = stKey.replace(/[^a-z0-9]/gi,'_');
+  const wrap = document.getElementById('cbw-' + safeKey);
+  if (wrap) wrap.classList.remove('open');
+}
+
+function saveCb(stKey) {
+  const safeKey = stKey.replace(/[^a-z0-9]/gi,'_');
+  const inp  = document.getElementById('cbi-' + safeKey);
+  const noteEl = document.getElementById('cbn-' + safeKey);
+  const qty = parseInt(inp.value, 10);
+  if (isNaN(qty) || qty < 0) { inp.style.borderColor = '#f87171'; return; }
+
+  // Save to mock store
+  stockTakes[stKey] = { qty, notes: noteEl.value || '' };
+
+  // Close input + re-render
+  closeCbInput(stKey);
+  renderReconciliation();
+
+  // Flash the saved cell
+  setTimeout(() => {
+    const wrap = document.getElementById('cbw-' + safeKey);
+    const cbVal = document.querySelector(`#row-${safeKey} .cb-value`);
+    if (cbVal) { cbVal.classList.add('flash'); setTimeout(() => cbVal.classList.remove('flash'), 700); }
+  }, 50);
+}
+
+// ── Tab switching ──────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    tab.classList.add('active');
+    const sec = document.querySelector(`.section[data-tab="${tab.dataset.tab}"]`);
+    if (sec) sec.classList.add('active');
+    // Close any open cb inputs
+    document.querySelectorAll('.cb-input-wrap.open').forEach(w => w.classList.remove('open'));
+  });
+});
+
+// ── Weekly Report controls ─────────────────────────────────
+document.getElementById('wr-prev').addEventListener('click', () => { wrWeekIdx = Math.max(0, wrWeekIdx-1); renderWeeklyReport(); });
+document.getElementById('wr-next').addEventListener('click', () => { wrWeekIdx = Math.min(WEEKS.length-1, wrWeekIdx+1); renderWeeklyReport(); });
+
+document.querySelectorAll('.seg-btn[data-seg]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.seg-btn[data-seg]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    wrSegment = btn.dataset.seg;
+    renderWeeklyReport();
+  });
+});
+
+// ── Reconciliation controls ────────────────────────────────
+document.getElementById('rc-prev').addEventListener('click', () => { rcWeekIdx = Math.max(0, rcWeekIdx-1); renderReconciliation(); });
+document.getElementById('rc-next').addEventListener('click', () => { rcWeekIdx = Math.min(WEEKS.length-1, rcWeekIdx+1); renderReconciliation(); });
+
+document.querySelectorAll('.seg-btn[data-rseg]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.seg-btn[data-rseg]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    rcSegment = btn.dataset.rseg;
+    renderReconciliation();
+  });
+});
+
+// Close cb inputs when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('.cb-cell')) {
+    document.querySelectorAll('.cb-input-wrap.open').forEach(w => w.classList.remove('open'));
+  }
+});
+
+// ── Init ───────────────────────────────────────────────────
+buildWrSelect();
+renderWeeklyReport();
+buildRcSelect();
+renderReconciliation();
+</script>
+</body>
+</html>
