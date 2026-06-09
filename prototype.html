@@ -193,7 +193,7 @@
           <th>Category</th>
           <th class="right">Units Sold</th>
           <th class="right">Revenue</th>
-          <th class="right" style="min-width:140px">% of Segment</th>
+          <th class="right">Current Stock</th>
         </tr>
       </thead>
       <tbody id="wr-tbody"></tbody>
@@ -491,18 +491,27 @@ function renderWeeklyReport() {
 
   document.getElementById('wr-tbody').innerHTML = sorted.map((r, i) => {
     const rnk = i < 3 ? `<span class="rank rank-${i+1}">${i+1}</span>` : `<span class="rank">${i+1}</span>`;
-    const pct = totUnits > 0 ? (r.units / totUnits * 100) : 0;
-    const bar = `<div class="pct-bar">
-      <div class="pct-track"><div class="pct-fill" style="width:${pct.toFixed(1)}%"></div></div>
-      <div class="pct-label">${pct.toFixed(1)}%</div>
-    </div>`;
+    // Current stock = closing balance if counted this week, else theoretical (opening + deliv − sold)
+    const stKey   = r.product + '::' + week;
+    const opening = getOpeningStock(r.product, wrWeekIdx);
+    const closing = stockTakes[stKey] ? stockTakes[stKey].qty : null;
+    let stockCell;
+    if (closing !== null) {
+      stockCell = `<span class="cb-value">${closing}</span>`;
+    } else if (opening !== null) {
+      const theor = opening + getDeliveries(r.product, week) - getSold(r.product, week);
+      const cls = theor <= 0 ? 'sold-col' : theor <= 5 ? 'cat-bars' : 'theor';
+      stockCell = `<span class="${cls}" title="theoretical (not counted)">~${theor}</span>`;
+    } else {
+      stockCell = '<span style="color:#444">—</span>';
+    }
     return `<tr>
       <td>${rnk}</td>
       <td>${r.product}</td>
       <td>${badge(r.category)}</td>
       <td class="right">${r.units}</td>
       <td class="right">${fmtCurrency(r.rev)}</td>
-      <td class="right">${bar}</td>
+      <td class="right">${stockCell}</td>
     </tr>`;
   }).join('');
 
@@ -512,7 +521,7 @@ function renderWeeklyReport() {
     <td></td>
     <td class="right">${totUnits}</td>
     <td class="right">${fmtCurrency(totRev)}</td>
-    <td></td>
+    <td class="right" style="color:#666;font-weight:400;font-size:11px">~ = theoretical</td>
   </tr>`;
 
   // Re-sync select
