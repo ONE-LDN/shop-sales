@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONE LDN Shop Dashboard — Prototype Audit</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 15px;
+    line-height: 1.75;
+    color: #1a1a1a;
+    background: #fafafa;
+    padding: 0;
+  }
+
+  .page {
+    max-width: 860px;
+    margin: 0 auto;
+    background: #ffffff;
+    padding: 72px 80px 80px;
+    box-shadow: 0 2px 40px rgba(0,0,0,.06);
+    min-height: 100vh;
+  }
+
+  /* Cover block */
+  .cover {
+    border-bottom: 3px solid #111;
+    padding-bottom: 36px;
+    margin-bottom: 48px;
+  }
+  .cover-label {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 14px;
+  }
+  .cover h1 {
+    font-size: 34px;
+    font-weight: 400;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: #111;
+    margin-bottom: 10px;
+  }
+  .cover h1 strong { font-weight: 700; }
+  .cover-sub {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    color: #666;
+    margin-top: 16px;
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .cover-sub span { display: flex; align-items: center; gap: 6px; }
+  .cover-sub span::before { content: '—'; color: #ccc; }
+
+  /* Section headings */
+  h2 {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #888;
+    margin-top: 52px;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  h3 {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: #111;
+    margin-top: 30px;
+    margin-bottom: 10px;
+  }
+  h4 {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #444;
+    margin-top: 22px;
+    margin-bottom: 6px;
+    letter-spacing: 0.01em;
+  }
+
+  p { margin-bottom: 14px; color: #333; }
+  p:last-child { margin-bottom: 0; }
+
+  /* Summary box */
+  .summary-box {
+    background: #f7f7f0;
+    border-left: 4px solid #111;
+    padding: 20px 24px;
+    margin: 28px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .summary-box p { margin-bottom: 8px; color: #222; }
+  .summary-box p:last-child { margin-bottom: 0; }
+
+  /* Benchmark table */
+  .benchmark-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0 28px;
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+  }
+  .benchmark-table thead th {
+    background: #111;
+    color: #fff;
+    font-weight: 600;
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .benchmark-table thead th:first-child { border-radius: 0; }
+  .benchmark-table tbody tr { border-bottom: 1px solid #efefef; }
+  .benchmark-table tbody tr:nth-child(even) { background: #fafafa; }
+  .benchmark-table tbody td { padding: 10px 14px; color: #333; vertical-align: top; }
+  .benchmark-table tbody td:first-child { font-weight: 500; color: #111; }
+  .benchmark-table tfoot td {
+    padding: 12px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    background: #f5f5f5;
+    border-top: 2px solid #ddd;
+    color: #111;
+  }
+
+  /* Status badges */
+  .status {
+    display: inline-block;
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .status-yes    { background: #dcfce7; color: #166534; }
+  .status-no     { background: #fee2e2; color: #991b1b; }
+  .status-partial { background: #fef9c3; color: #854d0e; }
+
+  /* Score bar */
+  .score-section {
+    margin: 32px 0;
+    padding: 24px 28px;
+    background: #f9f9f9;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+  }
+  .score-label {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .score-bar-wrap { background: #e5e7eb; border-radius: 99px; height: 12px; width: 100%; overflow: hidden; margin-bottom: 10px; }
+  .score-bar { height: 100%; border-radius: 99px; background: #111; transition: width 1s; }
+  .score-number {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: #111;
+    display: inline-block;
+  }
+  .score-denom { font-size: 15px; color: #888; margin-left: 2px; }
+
+  /* Tab assessment cards */
+  .tab-card {
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 18px 0;
+  }
+  .tab-card-header {
+    background: #f5f5f5;
+    padding: 13px 18px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  .tab-name {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: #111;
+  }
+  .tab-job {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12px;
+    color: #888;
+  }
+  .tab-card-body { padding: 16px 18px; }
+  .tab-card-body p { margin-bottom: 10px; font-size: 14px; }
+  .works-label, .gaps-label {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 14px;
+    margin-bottom: 6px;
+  }
+  .works-label { color: #166534; }
+  .gaps-label  { color: #991b1b; }
+  .check-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    color: #333;
+  }
+  .check-list li { padding: 3px 0 3px 22px; position: relative; }
+  .check-list li::before { position: absolute; left: 0; }
+  .check-list.works li::before { content: '✓'; color: #166534; font-weight: 700; }
+  .check-list.gaps  li::before { content: '✗'; color: #991b1b; font-weight: 700; }
+  .check-list.notes li::before { content: '→'; color: #777; }
+
+  /* Recommendations */
+  .rec-group { margin-bottom: 32px; }
+  .rec-priority {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 16px;
+  }
+  .priority-high   { background: #fee2e2; color: #991b1b; }
+  .priority-medium { background: #fef9c3; color: #854d0e; }
+  .priority-low    { background: #f0fdf4; color: #166534; }
+
+  .rec-item {
+    border-left: 3px solid #e8e8e8;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    background: #fafafa;
+    border-radius: 0 6px 6px 0;
+  }
+  .rec-item-title {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #111;
+    margin-bottom: 5px;
+  }
+  .rec-item p {
+    font-size: 13px;
+    margin-bottom: 0;
+    color: #555;
+  }
+  .priority-high   + .rec-item { border-left-color: #f87171; }
+  .priority-medium + .rec-item { border-left-color: #fbbf24; }
+
+  /* Gap callout */
+  .gap-callout {
+    background: #fff8f0;
+    border: 1px solid #fde8c8;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 20px 0;
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+  }
+  .gap-callout strong { color: #92400e; }
+
+  /* Comparison table (vs commercial) */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12.5px;
+    margin: 16px 0 28px;
+  }
+  .compare-table thead th {
+    background: #f5f5f5;
+    color: #444;
+    font-weight: 700;
+    padding: 9px 14px;
+    text-align: left;
+    border-bottom: 2px solid #ddd;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .compare-table thead th:not(:first-child) { text-align: center; }
+  .compare-table tbody tr { border-bottom: 1px solid #efefef; }
+  .compare-table tbody td { padding: 9px 14px; color: #333; vertical-align: middle; }
+  .compare-table tbody td:not(:first-child) { text-align: center; font-size: 16px; }
+
+  /* Footer */
+  .doc-footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid #e8e8e8;
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11px;
+    color: #aaa;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  @media print {
+    body { background: white; }
+    .page { box-shadow: none; padding: 48px 56px; }
+    h2 { break-before: avoid; }
+    .tab-card { break-inside: avoid; }
+    .rec-item  { break-inside: avoid; }
+  }
+
+  @media (max-width: 700px) {
+    .page { padding: 32px 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── Cover ─── -->
+  <div class="cover">
+    <div class="cover-label">Internal Audit Document</div>
+    <h1><strong>ONE LDN Shop Dashboard</strong><br>Prototype Audit &amp; Assessment</h1>
+    <div class="cover-sub">
+      <span>Prototype: <code>prototype-structure.html</code>, branch <code>claude/practical-johnson-x4adub</code></span>
+      <span>June 2026</span>
+    </div>
+  </div>
+
+  <!-- ─── Executive Summary ─── -->
+  <h2>Executive Summary</h2>
+
+  <div class="summary-box">
+    <p>The prototype introduces a clean four-tab architecture — <em>Weekly Report, Order Prediction, Stock Reconciliation, Finance</em> — that is structurally sound and directionally correct. Each tab answers a single, distinct question, eliminating the overlap that weakened the previous five-tab design.</p>
+    <p>Against the benchmark metrics from your research, the prototype covers roughly <strong>65–70%</strong> of what best-in-class inventory dashboards provide. The reorder and stock reconciliation logic is strong; the main gaps are sell-through rate, an overstocked signal, and the absence of any stock health summary on the primary view.</p>
+    <p>The most important single change before launch: <strong>add days of stock remaining and a low-stock flag to the Weekly Report product table</strong>, so the default tab gives decision makers a complete picture without needing to switch tabs.</p>
+  </div>
+
+  <!-- ─── What the Prototype Is ─── -->
+  <h2>What the Prototype Is</h2>
+
+  <p>This is a static HTML mock-up using Chart.js and hard-coded data. It is not connected to Supabase and does not run any of the live calculation logic from the production file. Its purpose is to validate layout, tab structure, and interaction patterns before building them into the live dashboard.</p>
+
+  <p>The prototype covers four proposed tabs:</p>
+  <ul style="margin: 10px 0 16px 22px; color: #333; font-size: 14px; line-height: 2;">
+    <li><strong>Weekly Report</strong> — per-category KPI cards and a brand-grouped product table with current stock</li>
+    <li><strong>Order Prediction</strong> — velocity-driven days-of-stock and suggested order quantities with urgency flags</li>
+    <li><strong>Stock Reconciliation</strong> — opening → deliveries → sold → theoretical → closing count flow, with inline count entry</li>
+    <li><strong>Finance</strong> — weekly revenue line chart by category and a monthly gross profit table by product</li>
+  </ul>
+
+  <p>The tab order in the prototype is: Weekly Report → Order Prediction → Stock Reconciliation → Finance. Your planning notes specify the intended order as Weekly Report → Stock Reconciliation → Order Prediction → Finance. <strong>These are transposed in the prototype.</strong></p>
+
+  <!-- ─── Benchmark Assessment ─── -->
+  <h2>Benchmark Assessment</h2>
+
+  <p>The following maps your research checklist of the most useful inventory metrics against what the prototype provides.</p>
+
+  <table class="benchmark-table">
+    <thead>
+      <tr>
+        <th style="width:34%">Metric</th>
+        <th style="width:14%">Status</th>
+        <th>Where &amp; Assessment</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Top-selling products and categories</td>
+        <td><span class="status status-yes">Present</span></td>
+        <td>Weekly Report product table ranked by units or revenue, grouped by brand. Category KPI cards show totals at a glance. Strong.</td>
+      </tr>
+      <tr>
+        <td>Sell-through rate</td>
+        <td><span class="status status-no">Missing</span></td>
+        <td>Not calculated in any tab. This is the most notable gap against best-in-class tools. Calculable from existing data: units sold ÷ (units delivered + opening stock).</td>
+      </tr>
+      <tr>
+        <td>Days of inventory remaining</td>
+        <td><span class="status status-partial">Partial</span></td>
+        <td>Present in Order Prediction via the covers bar. Not visible on the Weekly Report, where it would be most useful alongside the sales ranking.</td>
+      </tr>
+      <tr>
+        <td>Stock health flags — at-risk, healthy, overstocked</td>
+        <td><span class="status status-partial">Partial</span></td>
+        <td>Order Now and Order Soon flags cover the at-risk end. No overstocked or excess-stock flag exists. No summary panel — health is a per-row status in a table, not a scannable overview.</td>
+      </tr>
+      <tr>
+        <td>Revenue by day, week, and month</td>
+        <td><span class="status status-partial">Partial</span></td>
+        <td>Weekly on the Finance chart; monthly in the GP table. No daily breakdown. For this business, weekly is likely sufficient — daily would only be useful for event-driven spikes.</td>
+      </tr>
+      <tr>
+        <td>Fastest-moving and slow-moving items</td>
+        <td><span class="status status-partial">Partial</span></td>
+        <td>Velocity column in Order Prediction. Weekly Report table is sortable. No dedicated fast/slow filter or visual callout for the bottom performers.</td>
+      </tr>
+      <tr>
+        <td>Reorder alerts based on stock and sales velocity</td>
+        <td><span class="status status-yes">Present</span></td>
+        <td>Order Prediction tab handles this well — covers bar, urgency flags (Order Now / Order Soon / Sufficient), filter by status, suggested order quantity, and an Order button per row. Best-executed element of the prototype.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="score-section">
+    <div class="score-label">Benchmark coverage score</div>
+    <div class="score-bar-wrap"><div class="score-bar" style="width:67%"></div></div>
+    <span class="score-number">4.7</span><span class="score-denom"> / 7 metrics fully or mostly covered</span>
+  </div>
+
+  <!-- ─── Practical First Version Checklist ─── -->
+  <h2>Practical First Version Checklist</h2>
+
+  <p>Your notes outlined five elements a practical first version should include. Here is how the prototype addresses each.</p>
+
+  <h3>1. Headline KPIs — Revenue, Units, Gross Margin, Stock on Hand</h3>
+  <p>Revenue and units are present as per-category cards on the Weekly Report, each with a week-on-week delta. <strong>Gross margin is not on the Weekly Report</strong> — it only appears in the Finance tab's monthly GP table. Stock on hand appears in the product table but not as a headline KPI card. A single total-for-the-week revenue card above the category breakdown would strengthen the opening view.</p>
+
+  <div class="gap-callout">
+    <strong>On customisation and product/variant breakdown:</strong> The prototype groups the product table by brand, with products as expandable sub-rows. This is the right structure for café (brand = supplier). For merch, variants (size, colourway) currently sit as separate product rows rather than being grouped under a parent SKU. The live system has this data; the prototype does not yet demonstrate how variant grouping will work for merch.
+  </div>
+
+  <h3>2. Top Products Table — Product, Units, Revenue, Sell-Through, Days Left</h3>
+  <p>Product, units, and revenue are present. <strong>Sell-through and days left are both missing.</strong> Days left is the more critical of the two for operational decisions — a product selling 40 units a week with 8 days of stock is a more urgent problem than its raw rank suggests. Adding days left from the Order Prediction covers calculation would give the Weekly Report real operational weight.</p>
+
+  <h3>3. Stock Health Panel — Low Stock, Healthy, Overstocked</h3>
+  <p>The prototype has no stock health panel on any tab. The closest equivalent is the Order Prediction table with its flag column, but that requires navigating away from the Weekly Report. <strong>A compact health summary strip would answer the question "anything I need to worry about right now?" without leaving the default view.</strong></p>
+
+  <p>On your question about format — a bar chart is not the right choice here. Stock health status is categorical (three states), not continuous. The most readable format is a row of three count badges:</p>
+
+  <div style="margin: 16px 0 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+    <div style="background:#fee2e2; border-radius:6px; padding:10px 18px; font-family:Inter,sans-serif; text-align:center;">
+      <div style="font-size:22px; font-weight:700; color:#991b1b;">4</div>
+      <div style="font-size:11px; color:#991b1b; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">Order Now</div>
+    </div>
+    <div style="background:#fef9c3; border-radius:6px; padding:10px 18px; font-family:Inter,sans-serif; text-align:center;">
+      <div style="font-size:22px; font-weight:700; color:#854d0e;">7</div>
+      <div style="font-size:11px; color:#854d0e; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">Order Soon</div>
+    </div>
+    <div style="background:#dcfce7; border-radius:6px; padding:10px 18px; font-family:Inter,sans-serif; text-align:center;">
+      <div style="font-size:22px; font-weight:700; color:#166534;">23</div>
+      <div style="font-size:11px; color:#166534; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">Healthy</div>
+    </div>
+    <div style="background:#eff6ff; border-radius:6px; padding:10px 18px; font-family:Inter,sans-serif; text-align:center;">
+      <div style="font-size:22px; font-weight:700; color:#1e40af;">2</div>
+      <div style="font-size:11px; color:#1e40af; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">Excess</div>
+    </div>
+  </div>
+
+  <p>Each badge would link through to the Order Prediction tab pre-filtered to that status. This gives instant situational awareness and a single click to the action view.</p>
+
+  <h3>4. Trend Chart — Revenue and Units Over Time</h3>
+  <p>Present on the Finance tab as a line chart with per-category toggles. Well executed. The only limitation is placement — it is on the fourth tab, so it requires deliberate navigation. Whether this is correct depends on the audience: if trend review is a monthly management exercise rather than a daily check, the Finance tab placement is right.</p>
+
+  <h3>5. Reorder List — Items Below Threshold or Projected to Run Out</h3>
+  <p>The Order Prediction tab covers this thoroughly. Velocity, estimated stock, days covered, suggested order quantity, and status flags are all present. The filter buttons (All / Order Now / Order Soon / Sufficient) allow quick triage. This is the strongest part of the prototype.</p>
+
+  <!-- ─── Tab-by-Tab Assessment ─── -->
+  <h2>Tab-by-Tab Assessment</h2>
+
+  <div class="tab-card">
+    <div class="tab-card-header">
+      <span class="tab-name">Tab 1 — Weekly Report</span>
+      <span class="tab-job">What sold this week</span>
+    </div>
+    <div class="tab-card-body">
+      <p>This is the default tab and the most important real estate in the dashboard. The current prototype layout — KPI cards above, expandable brand table below — is correct. The week navigation arrows and dropdown are clean and functional.</p>
+
+      <div class="works-label">What works</div>
+      <ul class="check-list works">
+        <li>Per-category KPI cards with week-on-week delta are immediately useful</li>
+        <li>Brand-grouped expandable table is the right structure — avoids a flat list of 40+ products on load</li>
+        <li>Current stock column shows estimated stock from the reconciliation chain, flagged as approximate (~)</li>
+        <li>Sort by units or revenue is a small but high-value control</li>
+        <li>Category filter (All Café, sub-categories, All Merch) maps cleanly to how the business is organised</li>
+      </ul>
+
+      <div class="gaps-label">What's missing</div>
+      <ul class="check-list gaps">
+        <li>No days of stock remaining column — a product ranking 3rd by units with 4 days left is more urgent than a product ranking 1st with 30 days left; this context is invisible here</li>
+        <li>No stock health summary strip — the Order Now / Order Soon counts are only visible by navigating to a different tab</li>
+        <li>No sell-through rate column</li>
+        <li>No total-week revenue headline — the KPI cards show per-category subtotals but there is no single "this week: £X" number at the top</li>
+        <li>Merch variant grouping not demonstrated — merch products appear as flat rows; the live data has size and colourway variants that need to be grouped under a parent SKU</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tab-card">
+    <div class="tab-card-header">
+      <span class="tab-name">Tab 2 — Order Prediction</span>
+      <span class="tab-job">What needs reordering</span>
+    </div>
+    <div class="tab-card-body">
+      <p>The strongest tab in the prototype. The logic (velocity → covers → suggested order → flag) is well established from the live system and translates cleanly.</p>
+
+      <div class="works-label">What works</div>
+      <ul class="check-list works">
+        <li>Visual covers bar gives instant stock-level context without reading numbers</li>
+        <li>Dual filter row (segment toggle + status filter) allows efficient triage</li>
+        <li>Tab badge showing live Order Now count is a well-designed detail — visible without entering the tab</li>
+        <li>Café vs Merch cycle-time distinction (2-week vs 8-week) is correctly modelled</li>
+        <li>Order button per row is the right call to action</li>
+        <li>No-data state ("<em>Barebells Caramel</em>" row) is handled honestly rather than hidden</li>
+      </ul>
+
+      <div class="gaps-label">What's missing</div>
+      <ul class="check-list gaps">
+        <li>No overstocked / excess flag — the table only identifies shortage risk, not surplus</li>
+        <li>Tab position is wrong relative to your planning notes — should be tab 3, after Stock Reconciliation</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tab-card">
+    <div class="tab-card-header">
+      <span class="tab-name">Tab 3 — Stock Reconciliation</span>
+      <span class="tab-job">What stock we actually have</span>
+    </div>
+    <div class="tab-card-body">
+      <p>This tab is new — it does not exist in the current live system. It introduces the most operationally significant workflow in the redesign: the ability to record physical counts and create a reliable stock chain. The prototype demonstrates the interaction pattern clearly.</p>
+
+      <div class="works-label">What works</div>
+      <ul class="check-list works">
+        <li>Column colour coding (blue opening, green deliveries, red sold, yellow theoretical) makes the flow readable without a legend</li>
+        <li>The popover count-entry UX (click → popover with number input and notes field) is the right pattern — avoids inline editing confusion, supports notes</li>
+        <li>Opening balance reads from the previous week's closing count, creating the correct running chain</li>
+        <li>Theoretical estimate visible even before a physical count is entered</li>
+        <li>Flash animation on save is a good confirmation signal</li>
+      </ul>
+
+      <div class="gaps-label">What's missing</div>
+      <ul class="check-list gaps">
+        <li>No monthly variance summary — your notes specifically request variance aggregated by month, since weekly stock takes are unlikely. This view is absent from the prototype.</li>
+        <li>No guidance on which products are tracked here — the note field explains the formula but does not clarify that coffee and house-made items are excluded from reconciliation</li>
+        <li>Tab position should be tab 2, before Order Prediction</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tab-card">
+    <div class="tab-card-header">
+      <span class="tab-name">Tab 4 — Finance</span>
+      <span class="tab-job">Trends and margin</span>
+    </div>
+    <div class="tab-card-body">
+      <p>A clean merger of the old Trends chart and the GP data from Stock History. Correctly positioned as a monthly review view rather than a daily operational view.</p>
+
+      <div class="works-label">What works</div>
+      <ul class="check-list works">
+        <li>Line chart with per-category toggle is the right format for all-time revenue trends</li>
+        <li>GP table with month picker separates margin review from the operational tabs</li>
+        <li>Table footer shows total GP% for the month — this is the number a manager actually wants</li>
+        <li>Colour-coded GP% (green ≥50%, amber ≥30%, red &lt;30%) gives instant margin health signal</li>
+      </ul>
+
+      <div class="gaps-label">What's missing</div>
+      <ul class="check-list gaps">
+        <li>No overall GP% headline KPI at the top of the tab — the total is buried in the table footer</li>
+        <li>No merch GP data demonstrated in the prototype — only café products appear in the mock data</li>
+        <li>The chart shows revenue only — a units-sold overlay would be useful for spotting price changes or mix shifts</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ─── Comparison Against Commercial Systems ─── -->
+  <h2>Comparison Against Commercial Systems</h2>
+
+  <p>For context, this is how the prototype compares to entry-level commercial inventory tools (Lightspeed Retail, Square for Retail, Vend).</p>
+
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Capability</th>
+        <th>Commercial</th>
+        <th>This Prototype</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Velocity-based reorder prediction</td>
+        <td>✅</td>
+        <td>✅</td>
+      </tr>
+      <tr>
+        <td>Visual stock coverage indicator</td>
+        <td>✅</td>
+        <td>✅</td>
+      </tr>
+      <tr>
+        <td>Physical stock count workflow</td>
+        <td>✅</td>
+        <td>✅</td>
+      </tr>
+      <tr>
+        <td>Gross profit % by product</td>
+        <td>✅</td>
+        <td>✅</td>
+      </tr>
+      <tr>
+        <td>Revenue trend chart by category</td>
+        <td>✅</td>
+        <td>✅</td>
+      </tr>
+      <tr>
+        <td>Variant tracking (size / colourway)</td>
+        <td>✅</td>
+        <td>⚠️ Data exists, not demonstrated in prototype</td>
+      </tr>
+      <tr>
+        <td>Sell-through rate</td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>Overstocked / excess flag</td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>Stock health summary panel</td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>Days remaining on default view</td>
+        <td>✅</td>
+        <td>❌ (only on Order Prediction tab)</td>
+      </tr>
+      <tr>
+        <td>Real-time stock deduction on sale</td>
+        <td>✅</td>
+        <td>❌ (inherent CSV lag — by design)</td>
+      </tr>
+      <tr>
+        <td>Automated PO generation</td>
+        <td>✅</td>
+        <td>❌ (Order button is a placeholder)</td>
+      </tr>
+      <tr>
+        <td>Dual café / merch cycle-time logic</td>
+        <td>❌</td>
+        <td>✅ (custom to this business)</td>
+      </tr>
+      <tr>
+        <td>PDF invoice parsing for deliveries</td>
+        <td>❌</td>
+        <td>✅ (live system; not in prototype)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>The prototype matches or exceeds commercial tools on the reorder prediction engine and is behind mainly on reporting completeness — sell-through, overstocked, and the stock health summary. The CSV upload model means real-time stock deduction is out of scope, which is a reasonable and explicit trade-off.</p>
+
+  <!-- ─── Recommendations ─── -->
+  <h2>Recommendations</h2>
+
+  <p>Listed in priority order. All are achievable within the current architecture.</p>
+
+  <div class="rec-group">
+    <span class="rec-priority priority-high">High Priority</span>
+
+    <div class="rec-item">
+      <div class="rec-item-title">1. Fix the tab order</div>
+      <p>Move Stock Reconciliation to position 2, Order Prediction to position 3. The logical flow is: what sold → what we have → what to order → financials. The prototype currently has Order Prediction before Reconciliation, which inverts the chain.</p>
+    </div>
+
+    <div class="rec-item">
+      <div class="rec-item-title">2. Add a Days Left column to the Weekly Report product table</div>
+      <p>Reuse the covers calculation already in Order Prediction. Show days of stock remaining next to each product row. This turns the Weekly Report from a sales report into an operational dashboard. Products with &lt;7 days should show a red badge inline.</p>
+    </div>
+
+    <div class="rec-item">
+      <div class="rec-item-title">3. Add a stock health summary strip to the Weekly Report</div>
+      <p>Four count badges above the product table — Order Now, Order Soon, Healthy, Excess — each linking through to the Order Prediction tab filtered to that status. This eliminates the need to navigate away to check for urgency. See the illustrated example in the Practical First Version Checklist section above.</p>
+    </div>
+
+    <div class="rec-item">
+      <div class="rec-item-title">4. Add a monthly variance summary to Stock Reconciliation</div>
+      <p>Your notes specifically request variance aggregated by month. Since physical counts are unlikely to happen every week, the reconciliation tab should aggregate all weeks with entered counts into a monthly summary table below the week-by-week view: Product | Month | Counted Weeks | Total Variance.</p>
+    </div>
+  </div>
+
+  <div class="rec-group">
+    <span class="rec-priority priority-medium">Medium Priority</span>
+
+    <div class="rec-item">
+      <div class="rec-item-title">5. Add sell-through rate to the Weekly Report product table</div>
+      <p>Formula: units sold in period ÷ (units delivered in period + opening stock). If opening stock is unavailable, use units sold ÷ units delivered as a proxy. This is the single metric that most distinguishes a mature inventory dashboard from a basic sales report.</p>
+    </div>
+
+    <div class="rec-item">
+      <div class="rec-item-title">6. Add an overstocked flag to Order Prediction</div>
+      <p>Any product with more than 28 days cover (café) or 84 days cover (merch) should display an "Excess" badge. This surfaces slow movers and over-ordered products alongside stockout risks in the same view. The covers calculation is already in place — the flag is a one-line threshold addition.</p>
+    </div>
+
+    <div class="rec-item">
+      <div class="rec-item-title">7. Add a total-week revenue headline above the category KPI cards</div>
+      <p>A single number — "Week of 23 Jun: £1,219 total revenue" — gives immediate orientation before reading the per-category breakdown. This is a one-line addition to the Weekly Report header.</p>
+    </div>
+
+    <div class="rec-item">
+      <div class="rec-item-title">8. Demonstrate merch variant grouping in the prototype</div>
+      <p>The mock data uses flat product names (ONE LDN Hoodie (S), ONE LDN Tee Black (M)). The live data has separate colourway and size fields. Before building, establish how variants should be grouped in the Weekly Report: parent SKU → colourway → size, or a simpler flat table with size as a column.</p>
+    </div>
+  </div>
+
+  <div class="rec-group">
+    <span class="rec-priority priority-low">Lower Priority / Version Two</span>
+
+    <div class="rec-item">
+      <div class="rec-item-title">9. Surface overall GP% as a headline on the Finance tab</div>
+      <p>The total GP% for the selected month is currently in the table footer. A large number at the top of the Finance tab — "June 2025: 47.2% GP" — makes the tab useful at a glance for a monthly management review.</p>
+    </div>
+
+    <div class="rec-item">
+      <div class="rec-item-title">10. Add a slow-movers callout to the Weekly Report</div>
+      <p>A small secondary table or expandable section at the bottom: products that had zero sales this week but are in stock. Surfaces dead stock without cluttering the main ranked table.</p>
+    </div>
+  </div>
+
+  <!-- ─── Conclusion ─── -->
+  <h2>Conclusion</h2>
+
+  <p>The prototype is the right design. The four-tab structure — one question per tab — is a meaningful improvement over the previous layout, and the Stock Reconciliation tab is a significant new capability that the live system has needed from the start.</p>
+
+  <p>The gap between this prototype and a best-in-class inventory dashboard is not architectural. It is four specific additions: <strong>sell-through rate, an overstocked signal, a stock health summary, and days remaining on the primary view</strong>. Adding those to the Weekly Report would make the default tab genuinely complete as an operational view.</p>
+
+  <p>The foundation is solid. The recommendations above are refinements, not rebuilds.</p>
+
+  <!-- ─── Footer ─── -->
+  <div class="doc-footer">
+    <span>ONE LDN Shop Dashboard — Prototype Audit</span>
+    <span>June 2026</span>
+  </div>
+
+</div>
+</body>
+</html>
