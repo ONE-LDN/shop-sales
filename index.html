@@ -634,7 +634,7 @@
   </div>
 
   <!-- ── Global Period Bar ── -->
-  <div class="period-bar">
+  <div class="period-bar" id="periodBar">
     <span class="period-label-prefix">Period:</span>
     <div class="period-mode-toggle">
       <button class="period-mode-btn active" id="rollingModeBtn">Rolling</button>
@@ -655,8 +655,6 @@
   <div class="tabs">
     <button class="tab active" data-tab="weekly">Weekly Report</button>
     <button class="tab" data-tab="reconcile">Stock Reconciliation</button>
-    <button class="tab" data-tab="summary">Overview</button>
-    <button class="tab" data-tab="sellers">Top Sellers</button>
     <button class="tab" data-tab="predict">Order Prediction <span class="tab-badge" id="predBadge" style="display:none">0</span></button>
     <button class="tab" data-tab="finance">Finance</button>
   </div>
@@ -1997,6 +1995,7 @@ function goToOrderPrediction(flag, category) {
     const mapped = (flag === 'order-now' || flag === 'order-soon') ? 'reorder' : flag;
     if (sel) sel.value = mapped;
   }
+  updatePeriodBarVisibility('predict');
   renderOrderPrediction();
 }
 function renderSummary() {
@@ -3762,12 +3761,22 @@ function renderWeeklyHealth() {
   loadDeliveries().then(d => {
     const det = computeStockDetails(d).filter(r => wrInSeg({ category: r.category }));
     const reorder = det.filter(r => r.flag === 'order-now' || r.flag === 'order-soon').length;
-    const healthy = det.filter(r => r.flag === 'sufficient').length;
+    const sufficient = det.filter(r => r.flag === 'sufficient');
+    const isExcess = r => r.avgPerWeek > 0 && r.estStock != null && (r.estStock / r.avgPerWeek * 7) > (r.isMerch ? 84 : 28);
+    const excess  = sufficient.filter(isExcess).length;
+    const healthy = sufficient.length - excess;
     const seg = weeklySegment === 'merch' ? 'Merch' : '';
     el.innerHTML = `
       <div class="health-badge reorder" onclick="goToOrderPrediction('order-now', '${seg}')" title="View in Order Prediction"><span class="hb-count">${reorder}</span> Reorder</div>
-      <div class="health-badge healthy" onclick="goToOrderPrediction('', '${seg}')" title="View in Order Prediction"><span class="hb-count">${healthy}</span> Healthy</div>`;
+      <div class="health-badge healthy" onclick="goToOrderPrediction('', '${seg}')" title="View in Order Prediction"><span class="hb-count">${healthy}</span> Healthy</div>
+      <div class="health-badge excess" title="Overstocked — covers beyond ${weeklySegment === 'merch' ? '84' : '28'} days"><span class="hb-count">${excess}</span> Excess</div>`;
   });
+}
+
+// Period bar is irrelevant on the self-navigating tabs (Weekly Report, Reconciliation)
+function updatePeriodBarVisibility(tab) {
+  const bar = document.getElementById('periodBar');
+  if (bar) bar.style.display = (tab === 'weekly' || tab === 'reconcile') ? 'none' : '';
 }
 
 function initWeekNav() {
@@ -4926,6 +4935,7 @@ async function init() {
   // Weekly Report week navigation (4-tab redesign)
   initWeekNav();
   initReconcileNav();
+  updatePeriodBarVisibility(document.querySelector('.tab.active')?.dataset.tab);
 
   // ── Tab switching ──
   document.querySelectorAll('.tab').forEach(tab => {
@@ -4934,6 +4944,7 @@ async function init() {
       document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
       tab.classList.add('active');
       document.querySelector(`.section[data-tab="${tab.dataset.tab}"]`)?.classList.add('active');
+      updatePeriodBarVisibility(tab.dataset.tab);
       renderAll();
     });
   });
