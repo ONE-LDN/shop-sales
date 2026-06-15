@@ -647,6 +647,7 @@
   <!-- ── Tabs ── -->
   <div class="tabs">
     <button class="tab active" data-tab="weekly">Weekly Report</button>
+    <button class="tab" data-tab="reconcile">Stock Reconciliation</button>
     <button class="tab" data-tab="summary">Overview</button>
     <button class="tab" data-tab="sellers">Top Sellers</button>
     <button class="tab" data-tab="trends">Trends</button>
@@ -689,6 +690,41 @@
         <tbody id="wrProductTbody"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       TAB: STOCK RECONCILIATION  (4-tab redesign — read-only, count-to-count)
+       ══════════════════════════════════════════════════════════ -->
+  <div class="section" data-tab="reconcile">
+    <div class="week-nav">
+      <button id="recPrev" class="week-nav-btn">← Prev</button>
+      <span id="recDateLabel" class="week-nav-label">—</span>
+      <button id="recNext" class="week-nav-btn">Next →</button>
+      <select id="recDateSelect" class="week-nav-select"></select>
+    </div>
+    <div class="sub-tabs" id="recSegTabs" style="margin-bottom:10px">
+      <button class="sub-tab active" data-seg="cafe">Cafe</button>
+      <button class="sub-tab" data-seg="merch">Merch</button>
+    </div>
+    <div id="recInfo" style="font-size:12px;color:#9a9a9a;margin-bottom:10px"></div>
+    <div class="table-card">
+      <div class="chart-title" style="padding:14px 18px 8px">Stock reconciliation — count to count</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th class="right">Opening</th>
+            <th class="right">+ Deliveries</th>
+            <th class="right">− Sold</th>
+            <th class="right">= Theoretical</th>
+            <th class="right">Closing</th>
+            <th class="right">Variance</th>
+          </tr>
+        </thead>
+        <tbody id="recTbody"></tbody>
+      </table>
+    </div>
+    <div id="recSummary"></div>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════
@@ -1361,6 +1397,10 @@ let weeklySegment     = 'all';  // 'all' | 'cafe' | 'merch'
 let weeklyDrillCat    = null;   // category drilled into (brand cards)
 let weeklyDrillBrand  = null;   // brand drilled into (product cards)
 const WR_CAFE_CATS    = ['Coffee', 'Shakes', 'Bars & Snacks', 'Functional Drinks', 'Water'];
+
+// Stock Reconciliation tab — count-to-count, anchored on stock-take dates
+let reconcileDate     = null;   // selected closing take_date (ISO)
+let reconcileSegment  = 'cafe'; // 'cafe' | 'merch' (no "All" — table is wide)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DATE + PERIOD HELPERS
@@ -3692,9 +3732,135 @@ function initWeekNav() {
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDER — STOCK RECONCILIATION (4-tab redesign; read-only, count-to-count)
+// Counts come from the Google Sheet → shop_stock_takes. Each product is
+// reconciled against its own previous count:
+//   Theoretical = Opening + Deliveries(open→T) − Sold(open→T);  Variance = Closing − Theoretical
+// ═══════════════════════════════════════════════════════════════════════════
+
+function fmtFullDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+function recSessionDates() {
+  return [...new Set((allStockTakes || []).map(t => t.take_date))].sort().reverse();
+}
+
+async function renderStockReconciliation() {
+  const [takes, deliveries] = await Promise.all([loadStockTakes(), loadDeliveries()]);
+  const tbody   = document.getElementById('recTbody');
+  const sel     = document.getElementById('recDateSelect');
+  const info    = document.getElementById('recInfo');
+  const summary = document.getElementById('recSummary');
+
+  const sessions = [...new Set(takes.map(t => t.take_date))].sort().reverse();
+  if (!sessions.length) {
+    document.getElementById('recDateLabel').textContent = 'No counts yet';
+    sel.innerHTML = '';
+    document.getElementById('recPrev').disabled = true;
+    document.getElementById('recNext').disabled = true;
+    info.textContent = 'No stock takes submitted yet. Counts entered in the Stock Take Google Sheet will appear here automatically.';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:#666666">Waiting for the first stock take</td></tr>`;
+    summary.innerHTML = '';
+    return;
+  }
+
+  if (!reconcileDate || !sessions.includes(reconcileDate)) reconcileDate = sessions[0];
+  const di = sessions.indexOf(reconcileDate);
+  document.getElementById('recPrev').disabled = di >= sessions.length - 1; // Prev = older
+  document.getElementById('recNext').disabled = di <= 0;                    // Next = newer
+  document.getElementById('recDateLabel').textContent = fmtFullDate(reconcileDate);
+  sel.innerHTML = sessions.map(d => `<option value="${d}"${d === reconcileDate ? ' selected' : ''}>${fmtFullDate(d)}</option>`).join('');
+
+  const T = reconcileDate;
+
+  // History per product (ascending) so we can find each product's prior count.
+  const histByProduct = {};
+  takes.forEach(t => { (histByProduct[t.product_name_raw] ||= []).push(t); });
+  Object.values(histByProduct).forEach(a => a.sort((x, y) => x.take_date.localeCompare(y.take_date)));
+
+  const inSeg = key => {
+    const c = (productLookup[key] || {}).category;
+    return reconcileSegment === 'merch' ? c === 'Merch' : WR_CAFE_CATS.includes(c);
+  };
+  const paid = allRecords.filter(r => (r.state || 'Paid') !== 'Refunded');
+
+  const counted = takes
+    .filter(t => t.take_date === T && inSeg(t.product_name_raw))
+    .sort((a, b) => {
+      const an = (productLookup[a.product_name_raw] || {}).display_name || a.product_name_raw;
+      const bn = (productLookup[b.product_name_raw] || {}).display_name || b.product_name_raw;
+      return an.localeCompare(bn);
+    });
+
+  let netVar = 0, reconciled = 0;
+  const rows = counted.map(t => {
+    const key   = t.product_name_raw;
+    const name  = (productLookup[key] || {}).display_name || key;
+    const hist  = histByProduct[key] || [];
+    const prior = [...hist].reverse().find(x => x.take_date < T) || null;
+    const openDate = prior ? prior.take_date : null;
+    const opening  = prior ? Number(prior.actual_count) : null;
+    const closing  = Number(t.actual_count);
+
+    let deliv = 0, sold = 0, theo = null, variance = null;
+    if (openDate) {
+      deliv = deliveries
+        .filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= T)
+        .reduce((s, d) => s + (d.quantity_received || 0), 0);
+      sold = paid
+        .filter(r => r.productNameRaw === key && r.date.slice(0, 10) > openDate && r.date.slice(0, 10) <= T)
+        .reduce((s, r) => s + r.quantity, 0);
+      theo = opening + deliv - sold;
+      variance = closing - theo;
+      netVar += variance; reconciled++;
+    }
+    const vColor = variance === null ? '#666666' : variance < 0 ? '#f87171' : variance > 0 ? '#4ade80' : '#cfcfcf';
+    return `<tr>
+      <td>${name}</td>
+      <td class="right">${opening === null ? '—' : opening}</td>
+      <td class="right">${openDate ? '+' + deliv : '—'}</td>
+      <td class="right">${openDate ? '−' + sold : '—'}</td>
+      <td class="right">${theo === null ? '—' : theo}</td>
+      <td class="right">${closing}</td>
+      <td class="right" style="color:${vColor};font-weight:600">${variance === null ? '—' : (variance > 0 ? '+' + variance : variance)}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = rows.length ? rows.join('')
+    : `<tr><td colspan="7" style="text-align:center;padding:24px;color:#666666">No ${reconcileSegment} counts on ${fmtFullDate(T)}</td></tr>`;
+  info.textContent = `${counted.length} ${reconcileSegment} product${counted.length !== 1 ? 's' : ''} counted on ${fmtFullDate(T)} · variance shown where a prior count exists. First count for a product just sets its baseline.`;
+  summary.innerHTML = reconciled
+    ? `<div style="margin-top:14px;font-size:13px;color:#9a9a9a">Net variance across ${reconciled} reconciled product${reconciled !== 1 ? 's' : ''}: <strong style="color:${netVar < 0 ? '#f87171' : netVar > 0 ? '#4ade80' : '#9a9a9a'}">${netVar > 0 ? '+' + netVar : netVar}</strong> units <span style="color:#666666">(negative = shrinkage / waste)</span></div>`
+    : '';
+}
+
+function initReconcileNav() {
+  document.getElementById('recPrev').addEventListener('click', () => {
+    const ds = recSessionDates(); const i = ds.indexOf(reconcileDate);
+    if (i < ds.length - 1) { reconcileDate = ds[i + 1]; renderStockReconciliation(); }
+  });
+  document.getElementById('recNext').addEventListener('click', () => {
+    const ds = recSessionDates(); const i = ds.indexOf(reconcileDate);
+    if (i > 0) { reconcileDate = ds[i - 1]; renderStockReconciliation(); }
+  });
+  document.getElementById('recDateSelect').addEventListener('change', e => {
+    reconcileDate = e.target.value; renderStockReconciliation();
+  });
+  document.querySelectorAll('#recSegTabs .sub-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#recSegTabs .sub-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      reconcileSegment = btn.dataset.seg; renderStockReconciliation();
+    });
+  });
+}
+
 function renderAll() {
   const activeTab = document.querySelector('.tab.active')?.dataset.tab;
   if (activeTab === 'weekly' || !activeTab) renderWeeklyReport();
+  if (activeTab === 'reconcile') renderStockReconciliation();
   if (activeTab === 'summary') renderSummary();
   if (activeTab === 'sellers') {
     const activeSub = document.querySelector('.section[data-tab="sellers"] .sub-tab.active')?.dataset.sub;
@@ -4700,6 +4866,7 @@ async function init() {
 
   // Weekly Report week navigation (4-tab redesign)
   initWeekNav();
+  initReconcileNav();
 
   // ── Tab switching ──
   document.querySelectorAll('.tab').forEach(tab => {
@@ -4725,7 +4892,7 @@ async function init() {
   // ── Sub-tab switching (scoped to parent section) ──
   document.querySelectorAll('.sub-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      if (tab.closest('#summarySegTabs') || tab.closest('#wrSegTabs')) return; // handled by their own listeners
+      if (tab.closest('#summarySegTabs') || tab.closest('#wrSegTabs') || tab.closest('#recSegTabs')) return; // handled by their own listeners
       const parentSection = tab.closest('.section');
       if (parentSection) {
         parentSection.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
