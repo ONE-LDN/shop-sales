@@ -1365,6 +1365,20 @@ function getNWeeks(filteredRecords) {
   return Math.max(new Set(filteredRecords.map(r => r.weekStart)).size, 1);
 }
 
+// ── Stock-take / dashboard scope (4-tab redesign) ──────────────────────────
+// Consumables & Services are internal supplies — never surfaced in the dashboard.
+const EXCLUDED_CATEGORIES = ['Consumables', 'Services'];
+
+function isDashboardProduct(p) {        // p = a productLookup row
+  return !!p && !EXCLUDED_CATEGORIES.includes(p.category);
+}
+
+// Physically counted set — mirrors the Google Sheet (stock_tracked AND active).
+function getTrackedProducts() {
+  return Object.values(productLookup)
+    .filter(p => p.stock_tracked === true && p.active !== false);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PERIOD BAR
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1530,6 +1544,8 @@ function enrichRecord(r) {
     productType:  lu.product_type  || null,
     colourway:    lu.colourway     || null,
     size:         lu.size          || null,
+    subcategory:  lu.subcategory   || null,
+    stockTracked: lu.stock_tracked === true,
     active:       lu.active !== undefined ? lu.active : true,
   };
 }
@@ -2383,6 +2399,22 @@ function renderTrends() {
 
 let allDeliveries    = null; // lazy-loaded cache
 let invoiceAliases   = null; // invoice_name → product_name_raw
+let allStockTakes    = null; // lazy-loaded cache of physical stock counts
+
+// Physical stock counts from the Google Sheet sync (shop_stock_takes).
+// Returned newest-first; count-to-count reconciliation keys off take_date.
+async function loadStockTakes(force = false) {
+  if (allStockTakes !== null && !force) return allStockTakes;
+  try {
+    const data = await sbGet('shop_stock_takes',
+      'select=product_name_raw,take_date,actual_count,notes,source&order=take_date.desc');
+    allStockTakes = Array.isArray(data) ? data : [];
+  } catch(e) {
+    console.warn('Could not load stock takes', e);
+    allStockTakes = [];
+  }
+  return allStockTakes;
+}
 
 async function loadDeliveries(force = false) {
   if (allDeliveries !== null && !force) return allDeliveries;
