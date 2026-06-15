@@ -176,6 +176,13 @@
     .kpi-card.selected { outline: 2px solid #e8c547; }
     .wr-drill-title { font-size: 13px; color: #9a9a9a; margin: 8px 0 6px; }
     .wr-drill-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+    .shopping-list { background: #141414; border: 1px solid #2a2a2a; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; font-size: 13px; }
+    .shopping-list.empty { color: #4ade80; }
+    .shopping-list .sl-head { margin-bottom: 8px; }
+    .shopping-list .sl-head a { color: #e8c547; text-decoration: none; }
+    .shopping-list ul.sl-items { list-style: none; margin: 0; padding: 0; }
+    .shopping-list ul.sl-items li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid #1f1f1f; }
+    .shopping-list .sl-qty { color: #9a9a9a; white-space: nowrap; }
 
     /* ── Charts ── */
     .chart-row {
@@ -899,8 +906,7 @@
         </select>
         <select id="predFlagFilter">
           <option value="">All statuses</option>
-          <option value="order-now">🔴 Order now</option>
-          <option value="order-soon">🟡 Order soon</option>
+          <option value="reorder">🔁 Reorder</option>
           <option value="sufficient">🟢 Sufficient</option>
           <option value="no-data">⚪ No stock data</option>
         </select>
@@ -908,6 +914,7 @@
         <a class="pred-reload-btn" href="https://www.musclefinesse.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Order on Muscle Finesse ↗</a>
         <span class="pred-meta" id="predMeta"></span>
       </div>
+      <div id="predShoppingList"></div>
       <div class="table-card">
         <table id="predTable">
           <thead>
@@ -937,14 +944,14 @@
         </select>
         <select id="predMerchFlagFilter">
           <option value="">All statuses</option>
-          <option value="order-now">🔴 Order now</option>
-          <option value="order-soon">🟡 Order soon</option>
+          <option value="reorder">🔁 Reorder</option>
           <option value="sufficient">🟢 Sufficient</option>
           <option value="no-data">⚪ No stock data</option>
         </select>
         <button class="pred-reload-btn" id="predMerchReloadBtn">↻ Refresh</button>
         <span class="pred-meta" id="predMerchMeta"></span>
       </div>
+      <div id="predMerchShoppingList"></div>
       <div class="table-card">
         <table id="predMerchTable">
           <thead>
@@ -1984,7 +1991,8 @@ function goToOrderPrediction(flag, category) {
   if (flag) {
     const filterId = category === 'Merch' ? 'predMerchFlagFilter' : 'predFlagFilter';
     const sel = document.getElementById(filterId);
-    if (sel) sel.value = flag;
+    const mapped = (flag === 'order-now' || flag === 'order-soon') ? 'reorder' : flag;
+    if (sel) sel.value = mapped;
   }
   renderOrderPrediction();
 }
@@ -3169,6 +3177,37 @@ async function fillCostFromDeliveries() {
     : 'No new data to fill (products already have values or no delivery data found).';
 }
 
+// ── WS3d: next-order date + auto shopping list ─────────────────────────────
+// Reorder = order-now OR order-soon (the old two tiers consolidated). The next
+// order is due when covers fall to the lead-time buffer (cafe 7d / merch 14d).
+function buildNextOrder(estStock, avgPerWeek, coversDays, isMerch) {
+  if (estStock === null || avgPerWeek <= 0 || coversDays === Infinity) return { days: null, label: '—' };
+  const buffer = isMerch ? 14 : 7;
+  const days = Math.max(0, coversDays - buffer);
+  const dt = new Date(); dt.setDate(dt.getDate() + days);
+  return { days, label: days <= 0 ? 'Now' : dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) };
+}
+
+function renderShoppingList(containerId, reorderRows, orderLink) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!reorderRows.length) { el.innerHTML = `<div class="shopping-list empty">✓ Nothing to reorder right now</div>`; return; }
+  const minDays = reorderRows.map(r => r.daysToReorder).filter(d => d !== null && d !== undefined).sort((a, b) => a - b)[0] ?? 0;
+  const dt = new Date(); dt.setDate(dt.getDate() + minDays);
+  const soonest = minDays <= 0 ? 'Now' : dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const items = reorderRows
+    .slice().sort((a, b) => (a.daysToReorder ?? 1e9) - (b.daysToReorder ?? 1e9) || b.avgPerWeek - a.avgPerWeek)
+    .map(r => {
+      const info = productLookup[r.key] || {};
+      const pack = info.pack_size && r.predictedOrder > 0 ? ` (${Math.ceil(r.predictedOrder / info.pack_size)}×${info.pack_size})` : '';
+      const qty = (r.predictedOrder != null && r.predictedOrder > 0) ? `${r.predictedOrder} units${pack}` : 'top up';
+      return `<li><span>${r.displayName}</span><span class="sl-qty">${qty} · by ${r.nextOrderLabel}</span></li>`;
+    }).join('');
+  el.innerHTML = `<div class="shopping-list">
+    <div class="sl-head"><strong>Next order: ${soonest}</strong> · ${reorderRows.length} item${reorderRows.length !== 1 ? 's' : ''}${orderLink ? ` · <a href="${orderLink}" target="_blank" rel="noopener noreferrer">Order ↗</a>` : ''}</div>
+    <ul class="sl-items">${items}</ul></div>`;
+}
+
 async function renderOrderPrediction() {
   const activeSub = document.querySelector('.section[data-tab="predict"] .sub-tab.active')?.dataset.sub;
   if (activeSub === 'pred-merch') { await renderMerchOrderPrediction(); return; }
@@ -3280,7 +3319,10 @@ async function renderOrderPrediction() {
       flag = 'order-now'; flagOrder = 0;
     }
 
-    rows.push({ key, displayName, brand, cat, avgPerWeek, estStock, coversDays, predictedOrder, flag, flagOrder, lastDelivDate });
+    const no = buildNextOrder(estStock, avgPerWeek, coversDays, false);
+    const reorder = (flag === 'order-now' || flag === 'order-soon');
+    rows.push({ key, displayName, brand, cat, avgPerWeek, estStock, coversDays, predictedOrder, flag, flagOrder, lastDelivDate,
+                reorder, daysToReorder: no.days, nextOrderLabel: no.label });
   }
 
   // ── Populate brand filter ──
@@ -3298,7 +3340,12 @@ async function renderOrderPrediction() {
   let filtered = rows;
   if (cafeFilter)  filtered = filtered.filter(r => r.cat   === cafeFilter);
   if (brandFilter) filtered = filtered.filter(r => r.brand === brandFilter);
-  if (flagFilter)  filtered = filtered.filter(r => r.flag  === flagFilter);
+  // Consolidated Reorder filter (accepts legacy order-now/order-soon values too)
+  if (flagFilter === 'reorder' || flagFilter === 'order-now' || flagFilter === 'order-soon') {
+    filtered = filtered.filter(r => r.reorder);
+  } else if (flagFilter) {
+    filtered = filtered.filter(r => r.flag === flagFilter);
+  }
 
   // Sort: flag urgency first, then velocity desc
   filtered.sort((a, b) => a.flagOrder - b.flagOrder || b.avgPerWeek - a.avgPerWeek);
@@ -3357,10 +3404,12 @@ async function renderOrderPrediction() {
     }).join('');
   }
 
+  // ── Shopping list (all reorder items, independent of table filters) ──
+  renderShoppingList('predShoppingList', rows.filter(r => r.reorder), 'https://www.musclefinesse.com');
+
   // ── Meta + note ──
-  const ordNow  = filtered.filter(r => r.flag === 'order-now').length;
-  const ordSoon = filtered.filter(r => r.flag === 'order-soon').length;
-  metaEl.textContent = `${filtered.length} products · ${ordNow} need ordering · ${ordSoon} order soon`;
+  const reorderCount = filtered.filter(r => r.reorder).length;
+  metaEl.textContent = `${filtered.length} products · ${reorderCount} to reorder`;
 
   const cutoffStr = velCutoffWk
     ? (() => { const [y,m,d] = velCutoffWk.split('-'); return `${d}/${m}/${y}`; })()
@@ -3447,7 +3496,10 @@ async function renderMerchOrderPrediction() {
     else if (coversDays >= 14)                                { flag = 'order-soon'; flagOrder = 1; }
     else                                                      { flag = 'order-now';  flagOrder = 0; }
 
-    rows.push({ key, displayName, collection, colourway, size, avgPerWeek, estStock, coversDays, predictedOrder, flag, flagOrder, lastDelivDate });
+    const no = buildNextOrder(estStock, avgPerWeek, coversDays, true);
+    const reorder = (flag === 'order-now' || flag === 'order-soon');
+    rows.push({ key, displayName, collection, colourway, size, avgPerWeek, estStock, coversDays, predictedOrder, flag, flagOrder, lastDelivDate,
+                reorder, daysToReorder: no.days, nextOrderLabel: no.label });
   }
 
   // Collection filter
@@ -3460,7 +3512,11 @@ async function renderMerchOrderPrediction() {
 
   let filtered = rows;
   if (collFilter) filtered = filtered.filter(r => r.collection === collFilter);
-  if (flagFilter) filtered = filtered.filter(r => r.flag === flagFilter);
+  if (flagFilter === 'reorder' || flagFilter === 'order-now' || flagFilter === 'order-soon') {
+    filtered = filtered.filter(r => r.reorder);
+  } else if (flagFilter) {
+    filtered = filtered.filter(r => r.flag === flagFilter);
+  }
   filtered.sort((a, b) => a.flagOrder - b.flagOrder || b.avgPerWeek - a.avgPerWeek);
 
   const FLAG_LABELS = { 'order-now': '🔴 Order now', 'order-soon': '🟡 Order soon', 'sufficient': '🟢 Sufficient', 'no-data': '⚪ No stock data' };
@@ -3501,9 +3557,10 @@ async function renderMerchOrderPrediction() {
     }).join('');
   }
 
-  const ordNow  = filtered.filter(r => r.flag === 'order-now').length;
-  const ordSoon = filtered.filter(r => r.flag === 'order-soon').length;
-  metaEl.textContent = `${filtered.length} variants · ${ordNow} need ordering · ${ordSoon} order soon`;
+  renderShoppingList('predMerchShoppingList', rows.filter(r => r.reorder), null);
+
+  const reorderCount = filtered.filter(r => r.reorder).length;
+  metaEl.textContent = `${filtered.length} variants · ${reorderCount} to reorder`;
 
   const cutoffStr = velCutoffWk
     ? (() => { const [y,m,d] = velCutoffWk.split('-'); return `${d}/${m}/${y}`; })()
