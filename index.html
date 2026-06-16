@@ -970,6 +970,7 @@
               <th>Covers</th>
               <th class="right">Predicted Order</th>
               <th class="right">Last Delivery</th>
+              <th class="right">Order by</th>
             </tr>
           </thead>
           <tbody id="predTbody"></tbody>
@@ -1011,6 +1012,7 @@
               <th>Covers</th>
               <th class="right">Predicted Order</th>
               <th class="right">Last Delivery</th>
+              <th class="right">Order by</th>
             </tr>
           </thead>
           <tbody id="predMerchTbody"></tbody>
@@ -3367,7 +3369,7 @@ async function renderOrderPrediction() {
   const tbody   = document.getElementById('predTbody');
   const metaEl  = document.getElementById('predMeta');
   const noteEl  = document.getElementById('predNote');
-  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
 
   const deliveries = await loadDeliveries();
 
@@ -3489,7 +3491,7 @@ async function renderOrderPrediction() {
   };
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666666;padding:24px">No products match current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666666;padding:24px">No products match current filters.</td></tr>';
   } else {
     tbody.innerHTML = filtered.map(r => {
       // Covers bar: clamp to 0–28 days for visual
@@ -3520,6 +3522,12 @@ async function renderOrderPrediction() {
         ? (() => { const [y,m,d] = r.lastDelivDate.split('-'); return `${d}/${m}/${y}`; })()
         : '<span style="color:#4a4f66">—</span>';
 
+      const orderByCell = !r.nextOrderLabel || r.nextOrderLabel === '—'
+        ? '<span style="color:#4a4f66">—</span>'
+        : r.nextOrderLabel === 'Now'
+          ? `<span style="color:#f87171;font-weight:600">Now</span>`
+          : r.nextOrderLabel;
+
       return `<tr>
         <td><span class="pred-flag ${r.flag}"></span></td>
         <td style="font-weight:600">${r.displayName}</td>
@@ -3530,6 +3538,7 @@ async function renderOrderPrediction() {
         <td>${coversCell}</td>
         <td class="right">${predCell}</td>
         <td class="right" style="color:#666666;font-size:11px">${lastDelCell}</td>
+        <td class="right" style="font-size:11px">${orderByCell}</td>
       </tr>`;
     }).join('');
   }
@@ -3557,7 +3566,7 @@ async function renderMerchOrderPrediction() {
   const tbody  = document.getElementById('predMerchTbody');
   const metaEl = document.getElementById('predMerchMeta');
   const noteEl = document.getElementById('predMerchNote');
-  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
 
   const deliveries = await loadDeliveries();
 
@@ -3646,7 +3655,7 @@ async function renderMerchOrderPrediction() {
   const FLAG_LABELS = { 'order-now': '🔴 Order now', 'order-soon': '🟡 Order soon', 'sufficient': '🟢 Sufficient', 'no-data': '⚪ No stock data' };
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666666;padding:24px">No merch products match current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#666666;padding:24px">No merch products match current filters.</td></tr>';
   } else {
     tbody.innerHTML = filtered.map(r => {
       const barPct = r.coversDays === null ? 0 : r.coversDays === Infinity ? 100 : Math.min(100, (r.coversDays / (CYCLE_WEEKS * 7)) * 100);
@@ -3666,6 +3675,12 @@ async function renderMerchOrderPrediction() {
         ? (() => { const [y,m,d] = r.lastDelivDate.split('-'); return `${d}/${m}/${y}`; })()
         : '<span style="color:#4a4f66">—</span>';
 
+      const orderByCell = !r.nextOrderLabel || r.nextOrderLabel === '—'
+        ? '<span style="color:#4a4f66">—</span>'
+        : r.nextOrderLabel === 'Now'
+          ? `<span style="color:#f87171;font-weight:600">Now</span>`
+          : r.nextOrderLabel;
+
       return `<tr>
         <td><span class="pred-flag ${r.flag}"></span></td>
         <td style="font-weight:600">${r.displayName}</td>
@@ -3677,6 +3692,7 @@ async function renderMerchOrderPrediction() {
         <td>${coversCell}</td>
         <td class="right">${predCell}</td>
         <td class="right" style="color:#666666;font-size:11px">${lastDelCell}</td>
+        <td class="right" style="font-size:11px">${orderByCell}</td>
       </tr>`;
     }).join('');
   }
