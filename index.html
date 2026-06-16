@@ -189,9 +189,8 @@
     /* ── Weekly Report section layout ── */
     .wr-section { margin-bottom: 32px; }
     .kpi-row--compact { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
-    .kpi-row--compact .kpi-card { padding: 10px 12px; }
-    .kpi-row--compact .kpi-value { font-size: 22px; }
-    .health-strip--urgent { margin-top: 2px; }
+    .health-strip--urgent { margin-top: 6px; }
+    .health-strip--urgent-label { font-size: 11px; color: #6a6f88; margin-bottom: 4px; letter-spacing: 0.03em; }
 
     /* ── Charts ── */
     .chart-row {
@@ -3997,7 +3996,7 @@ function renderWeeklyHealth() {
         <div class="health-badge healthy" onclick="goToOrderPrediction('', '${seg}')" title="View in Order Prediction"><span class="hb-count">${healthy}</span> Healthy</div>
         <div class="health-badge excess" title="Overstocked — covers beyond ${weeklySegment === 'merch' ? '84' : '28'} days"><span class="hb-count">${excess}</span> Excess</div>
       </div>
-      ${urgent.length ? `<div class="health-strip health-strip--urgent">${urgentCards}</div>` : ''}`;
+      ${urgent.length ? `<div class="health-strip--urgent-label">Top 3 to reorder →</div><div class="health-strip health-strip--urgent">${urgentCards}</div>` : ''}`;
   });
 }
 
