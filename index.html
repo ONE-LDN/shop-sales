@@ -164,7 +164,7 @@
     .week-nav-btn:disabled { opacity: .4; cursor: default; }
     .week-nav-label { font-size: 15px; font-weight: 700; min-width: 160px; text-align: center; }
     .week-nav-select { background: #1a1a1a; border: 1px solid #2a2a2a; color: #f0f0f0; border-radius: 8px; padding: 6px 10px; font-size: 13px; margin-left: auto; }
-    .health-strip { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .health-strip { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: flex-start; }
     .health-badge { display: flex; align-items: center; gap: 8px; background: #141414; border: 1px solid #2a2a2a; border-radius: 10px; padding: 8px 14px; cursor: pointer; font-size: 13px; color: #cfcfcf; }
     .health-badge:hover { border-color: #e8c547; }
     .health-badge .hb-count { font-size: 18px; font-weight: 700; color: #f0f0f0; }
@@ -185,6 +185,13 @@
     .shopping-list ul.sl-items { list-style: none; margin: 0; padding: 0; }
     .shopping-list ul.sl-items li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid #1f1f1f; }
     .shopping-list .sl-qty { color: #9a9a9a; white-space: nowrap; }
+
+    /* ── Weekly Report section layout ── */
+    .wr-section { margin-bottom: 28px; }
+    .kpi-row--compact { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+    .kpi-row--compact .kpi-card { padding: 10px 12px; }
+    .kpi-row--compact .kpi-value { font-size: 22px; }
+    .health-strip--urgent { margin-top: 2px; }
 
     /* ── Charts ── */
     .chart-row {
@@ -691,9 +698,15 @@
       <button class="sub-tab" data-seg="cafe">Cafe</button>
       <button class="sub-tab" data-seg="merch">Merch</button>
     </div>
-    <div id="wrHealthStrip" class="health-strip"></div>
-    <div id="wrTopSellers"></div>
-    <div class="kpi-row" id="wrKPIs"></div>
+    <div class="wr-section">
+      <div class="wr-drill-title">Stock Health</div>
+      <div id="wrHealthStrip"></div>
+    </div>
+    <div class="wr-section" id="wrTopSellers"></div>
+    <div class="wr-section">
+      <div class="wr-drill-title">Categories</div>
+      <div class="kpi-row kpi-row--compact" id="wrKPIs"></div>
+    </div>
     <div id="wrDrill"></div>
     <div class="table-card" style="margin-top:20px">
       <div class="chart-title" style="padding:14px 18px 8px">Products — week of <span id="wrTableWk"></span></div>
@@ -3940,7 +3953,7 @@ function renderWeeklyProducts(paidAll) {
 // Secondary stock-health strip (consolidated Reorder flag finalised in WS3d)
 function renderWeeklyHealth() {
   const el = document.getElementById('wrHealthStrip');
-  el.innerHTML = `<div class="health-badge healthy"><span class="hb-count">…</span> loading</div>`;
+  el.innerHTML = `<div class="health-strip"><div class="health-badge healthy"><span class="hb-count">…</span> loading</div></div>`;
   loadDeliveries().then(d => {
     const det = computeStockDetails(d).filter(r => wrInSeg({ category: r.category }));
     const reorderRows = det.filter(r => r.flag === 'order-now' || r.flag === 'order-soon');
@@ -3963,10 +3976,12 @@ function renderWeeklyHealth() {
     }).join('');
 
     el.innerHTML = `
-      <div class="health-badge reorder" onclick="goToOrderPrediction('order-now', '${seg}')" title="View in Order Prediction"><span class="hb-count">${reorder}</span> Reorder</div>
-      <div class="health-badge healthy" onclick="goToOrderPrediction('', '${seg}')" title="View in Order Prediction"><span class="hb-count">${healthy}</span> Healthy</div>
-      <div class="health-badge excess" title="Overstocked — covers beyond ${weeklySegment === 'merch' ? '84' : '28'} days"><span class="hb-count">${excess}</span> Excess</div>
-      ${urgentCards}`;
+      <div class="health-strip">
+        <div class="health-badge reorder" onclick="goToOrderPrediction('order-now', '${seg}')" title="View in Order Prediction"><span class="hb-count">${reorder}</span> Reorder</div>
+        <div class="health-badge healthy" onclick="goToOrderPrediction('', '${seg}')" title="View in Order Prediction"><span class="hb-count">${healthy}</span> Healthy</div>
+        <div class="health-badge excess" title="Overstocked — covers beyond ${weeklySegment === 'merch' ? '84' : '28'} days"><span class="hb-count">${excess}</span> Excess</div>
+      </div>
+      ${urgent.length ? `<div class="health-strip health-strip--urgent">${urgentCards}</div>` : ''}`;
   });
 }
 
