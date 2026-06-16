@@ -514,6 +514,7 @@
       text-align: left; padding: 7px 10px; font-size: 11px; color: #666666;
       font-weight: 600; border-bottom: 1px solid #1e1e1e; white-space: nowrap;
     }
+    .stock-history-table th.right { text-align: right; }
     .stock-history-table td { padding: 7px 10px; border-bottom: 1px solid #141414; vertical-align: middle; }
     .stock-history-table tr:last-child td { border-bottom: none; }
     .stock-history-table tr:hover td { background: #141414; }
@@ -524,6 +525,19 @@
     .net-pos { color: #4ade80; font-weight: 600; }
     .net-neg { color: #f87171; font-weight: 600; }
     .gp-cell { text-align: right; }
+    /* GP monthly — Category → Brand → Product expand/collapse */
+    .gp-cat-row td { font-weight: 700; cursor: pointer; background: #0e0e0e; }
+    .gp-cat-row td:first-child::before { content: '▶ '; color: #666666; font-size: 10px; }
+    .gp-cat-row.expanded td:first-child::before { content: '▼ '; }
+    .gp-brand-row { display: none; }
+    .gp-brand-row.visible { display: table-row; }
+    .gp-brand-row td { font-weight: 600; cursor: pointer; }
+    .gp-brand-row td:first-child { padding-left: 26px; }
+    .gp-brand-row td:first-child::before { content: '▶ '; color: #666666; font-size: 10px; }
+    .gp-brand-row.expanded td:first-child::before { content: '▼ '; }
+    .gp-prod-row { display: none; }
+    .gp-prod-row.visible { display: table-row; }
+    .gp-prod-row td:first-child { padding-left: 46px; font-size: 12px; color: #c8cad6; }
     .no-cost-hint { color: #4a4f66; font-size: 11px; cursor: pointer; }
     .no-cost-hint:hover { color: #e8c547; }
     /* Stock Action Tracker */
@@ -677,9 +691,21 @@
     </div>
     <div id="wrHealthStrip" class="health-strip"></div>
     <div class="kpi-row" id="wrKPIs"></div>
+    <div id="wrTopSellers"></div>
     <div id="wrDrill"></div>
     <div class="table-card" style="margin-top:20px">
       <div class="chart-title" style="padding:14px 18px 8px">Products — week of <span id="wrTableWk"></span></div>
+      <div class="pred-controls" id="wrTableControls" style="padding:0 18px 12px;margin-bottom:0">
+        <div class="sub-tabs" id="wrTableSegTabs" style="margin-bottom:0">
+          <button class="sub-tab active" data-tseg="all">All Products</button>
+          <button class="sub-tab" data-tseg="cafe">Cafe</button>
+          <button class="sub-tab" data-tseg="merch">Merch</button>
+        </div>
+        <select id="wrTableSortSelect">
+          <option value="units">Sort: Units sold</option>
+          <option value="rev">Sort: Revenue</option>
+        </select>
+      </div>
       <table>
         <thead>
           <tr>
@@ -1404,6 +1430,8 @@ let weeklyWeekStart   = null;   // ISO Monday string of the selected week
 let weeklySegment     = 'all';  // 'all' | 'cafe' | 'merch'
 let weeklyDrillCat    = null;   // category drilled into (brand cards)
 let weeklyDrillBrand  = null;   // brand drilled into (product cards)
+let wrTableSeg        = 'all';  // product table only: 'all' | 'cafe' | 'merch'
+let wrTableSort       = 'units';// product table sort: 'units' | 'rev'
 const WR_CAFE_CATS    = ['Coffee', 'Shakes', 'Bars & Snacks', 'Functional Drinks', 'Water'];
 
 // Stock Reconciliation tab — count-to-count, anchored on stock-take dates
@@ -2323,6 +2351,26 @@ function toggleBrand(brandId) {
   products.forEach(p => p.classList.toggle('visible', isExpanded));
 }
 
+// GP monthly table — Category → Brand → Product expand/collapse.
+function gpToggleCat(catId) {
+  const row = document.querySelector(`.gp-cat-row[data-cat-id="${catId}"]`);
+  const expanded = row.classList.toggle('expanded');
+  document.querySelectorAll(`.gp-brand-row[data-cat-id="${catId}"]`).forEach(br => {
+    br.classList.toggle('visible', expanded);
+    if (!expanded) {                       // collapsing a category folds its brands + products too
+      br.classList.remove('expanded');
+      document.querySelectorAll(`.gp-prod-row[data-brand-id="${br.dataset.brandId}"]`)
+        .forEach(p => p.classList.remove('visible'));
+    }
+  });
+}
+function gpToggleBrand(brandId) {
+  const row = document.querySelector(`.gp-brand-row[data-brand-id="${brandId}"]`);
+  const expanded = row.classList.toggle('expanded');
+  document.querySelectorAll(`.gp-prod-row[data-brand-id="${brandId}"]`)
+    .forEach(p => p.classList.toggle('visible', expanded));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // RENDER — TOP SELLERS: MERCH (Collection → Product hierarchy)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2446,32 +2494,37 @@ function renderTrends() {
     return;
   }
 
+  const lineDataset = (cat, valueFn) => ({
+    label: cat,
+    data: weeks.map(wk => paid.filter(r => r.weekStart === wk && r.category === cat).reduce(valueFn, 0)),
+    borderColor: CAT_COLORS[cat],
+    backgroundColor: CAT_COLORS[cat],
+    tension: 0.3,
+    borderWidth: 2,
+    pointRadius: 2,
+    pointHoverRadius: 4,
+    fill: false,
+    spanGaps: true,
+  });
+
   destroyChart('trendsChart');
   const ctx1 = document.getElementById('trendsChart').getContext('2d');
   activeCharts['trendsChart'] = new Chart(ctx1, {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: weeks.map(fmtWeek),
-      datasets: visibleCats.map(cat => ({
-        label: cat,
-        data: weeks.map(wk =>
-          paid.filter(r => r.weekStart === wk && r.category === cat)
-              .reduce((s, r) => s + r.grossRevenue, 0)
-        ),
-        backgroundColor: CAT_COLORS[cat],
-        stack: 'rev',
-        borderRadius: 2,
-      }))
+      datasets: visibleCats.map(cat => lineDataset(cat, (s, r) => s + r.grossRevenue)),
     },
     options: {
       responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { labels: { color: '#666666', font: { size: 11 } } },
         tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + fmtCurrency(ctx.parsed.y) } }
       },
       scales: {
-        x: { stacked: true, grid: { color: '#1e1e1e' }, ticks: { color: '#666666', font: { size: 10 } } },
-        y: { stacked: true, grid: { color: '#1e1e1e' }, ticks: { color: '#666666', font: { size: 10 },
+        x: { grid: { color: '#1e1e1e' }, ticks: { color: '#666666', font: { size: 10 } } },
+        y: { beginAtZero: true, grid: { color: '#1e1e1e' }, ticks: { color: '#666666', font: { size: 10 },
           callback: v => '£' + v } }
       }
     }
@@ -2480,29 +2533,21 @@ function renderTrends() {
   destroyChart('trendsUnitsChart');
   const ctx2 = document.getElementById('trendsUnitsChart').getContext('2d');
   activeCharts['trendsUnitsChart'] = new Chart(ctx2, {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: weeks.map(fmtWeek),
-      datasets: visibleCats.map(cat => ({
-        label: cat,
-        data: weeks.map(wk =>
-          paid.filter(r => r.weekStart === wk && r.category === cat)
-              .reduce((s, r) => s + r.quantity, 0)
-        ),
-        backgroundColor: CAT_COLORS[cat],
-        stack: 'units',
-        borderRadius: 2,
-      }))
+      datasets: visibleCats.map(cat => lineDataset(cat, (s, r) => s + r.quantity)),
     },
     options: {
       responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + ctx.parsed.y + ' units' } }
       },
       scales: {
-        x: { stacked: true, grid: { color: '#1e1e1e' }, ticks: { color: '#666666', font: { size: 10 } } },
-        y: { stacked: true, grid: { color: '#1e1e1e' }, ticks: { color: '#666666', font: { size: 10 } } }
+        x: { grid: { color: '#1e1e1e' }, ticks: { color: '#666666', font: { size: 10 } } },
+        y: { beginAtZero: true, grid: { color: '#1e1e1e' }, ticks: { color: '#666666', font: { size: 10 } } }
       }
     }
   });
@@ -2871,15 +2916,55 @@ async function renderStockHistory() {
     return `<td class="gp-cell right"><span class="no-cost-hint" id="hint-${key.replace(/[^a-z0-9]/gi,'_')}" title="Click Edit cost prices to add">—</span></td>`;
   };
 
-  const tableRows = filtered.map(r => `<tr>
-    <td>${(r.displayName).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td>
-    <td class="right">${r.delivered || '—'}</td>
-    <td class="right">${r.sold || '—'}</td>
-    ${netCell(r.net)}
-    <td class="right">${r.revenue > 0 ? fmt(r.revenue) : '—'}</td>
-    <td class="right">${r.cogs != null ? fmt(r.cogs) : '<span class="no-cost-hint">—</span>'}</td>
-    ${gpCell(r.gp, r.key)}
-  </tr>`).join('');
+  // Subtotal helper for a group of product rows.
+  const sumGroup = (items) => {
+    const delivered = items.reduce((s, r) => s + r.delivered, 0);
+    const sold      = items.reduce((s, r) => s + r.sold, 0);
+    const revenue   = items.reduce((s, r) => s + r.revenue, 0);
+    const cogs      = items.every(r => r.cogs != null) ? items.reduce((s, r) => s + r.cogs, 0) : null;
+    const gp        = (cogs != null && revenue > 0) ? (revenue - cogs) / revenue * 100 : null;
+    return { delivered, sold, net: delivered - sold, revenue, cogs, gp };
+  };
+  const subtotalCells = (t) => `<td class="right">${t.delivered || '—'}</td>
+    <td class="right">${t.sold || '—'}</td>
+    ${netCell(t.net)}
+    <td class="right">${t.revenue > 0 ? fmt(t.revenue) : '—'}</td>
+    <td class="right">${t.cogs != null ? fmt(t.cogs) : '—'}</td>
+    <td class="gp-cell right">${t.gp != null ? fmtN(t.gp) : '—'}</td>`;
+
+  // Group: Category → Brand → Products, each level collapsible with subtotals.
+  const catMap = {};
+  filtered.forEach(r => { ((catMap[r.cat] ||= {})[r.brand || '—'] ||= []).push(r); });
+
+  const rowsHtml = [];
+  let ci = 0;
+  Object.keys(catMap).sort().forEach(cat => {
+    const catId = 'gpc-' + (ci++);
+    const brandsObj = catMap[cat];
+    const ct = sumGroup(Object.values(brandsObj).flat());
+    rowsHtml.push(`<tr class="gp-cat-row" data-cat-id="${catId}" onclick="gpToggleCat('${catId}')">
+      <td>${wrEsc(cat)}</td>${subtotalCells(ct)}</tr>`);
+    let bi = 0;
+    Object.keys(brandsObj).sort().forEach(brand => {
+      const brandId = catId + '-b' + (bi++);
+      const items = brandsObj[brand].sort((a, b) => a.displayName.localeCompare(b.displayName));
+      const bt = sumGroup(items);
+      rowsHtml.push(`<tr class="gp-brand-row" data-cat-id="${catId}" data-brand-id="${brandId}" onclick="gpToggleBrand('${brandId}')">
+        <td>${wrEsc(brand)}</td>${subtotalCells(bt)}</tr>`);
+      items.forEach(r => {
+        rowsHtml.push(`<tr class="gp-prod-row" data-brand-id="${brandId}">
+          <td>${wrEsc(r.displayName)}</td>
+          <td class="right">${r.delivered || '—'}</td>
+          <td class="right">${r.sold || '—'}</td>
+          ${netCell(r.net)}
+          <td class="right">${r.revenue > 0 ? fmt(r.revenue) : '—'}</td>
+          <td class="right">${r.cogs != null ? fmt(r.cogs) : '<span class="no-cost-hint">—</span>'}</td>
+          ${gpCell(r.gp, r.key)}
+        </tr>`);
+      });
+    });
+  });
+  const tableRows = rowsHtml.join('');
 
   const totGpStr = totGp != null ? fmtN(totGp) : '—';
 
@@ -2887,7 +2972,7 @@ async function renderStockHistory() {
     <div class="table-card">
       <table class="stock-history-table">
         <thead><tr>
-          <th>Product</th>
+          <th>Category / Brand / Product</th>
           <th class="right">Delivered</th>
           <th class="right">Sold</th>
           <th class="right">Net</th>
@@ -3593,6 +3678,26 @@ function wrInSeg(r) {
 }
 function wrWeekEnd(iso) { const d = new Date(iso); d.setDate(d.getDate() + 6); return isoDate(d); }
 function wrWeekLabel(iso) { return `${fmtWeek(iso)} – ${fmtWeek(wrWeekEnd(iso))}`; }
+// Previous week + ~same week last month, relative to the selected week.
+function wrAdjacentWeeks() {
+  const weeks = wrWeeks();
+  const wi = weeks.indexOf(weeklyWeekStart);
+  return { prevWk: wi > 0 ? weeks[wi - 1] : null, monWk: wi >= 4 ? weeks[wi - 4] : null };
+}
+// Product-table-only segment filter (independent of the page-level KPIs).
+function wrInTableSeg(r) {
+  return wrTableSeg === 'cafe'  ? WR_CAFE_CATS.includes(r.category)
+       : wrTableSeg === 'merch' ? r.category === 'Merch'
+       : true;
+}
+// Drop a redundant leading brand prefix from a product label once drilled in.
+function wrStripBrand(label, brand) {
+  if (!brand) return label;
+  const re = new RegExp('^\\s*' + brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-–:·]?\\s*', 'i');
+  const stripped = label.replace(re, '').trim();
+  return stripped || label;
+}
+const wrEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function wrDelta(label, curV, prevV) {
   if (prevV === undefined || prevV === null || prevV === 0) return `<div class="kpi-delta flat">${label}: —</div>`;
   const p = (curV - prevV) / prevV * 100;
@@ -3653,9 +3758,41 @@ function renderWeeklyReport() {
     </div>`;
   }).join('');
 
+  renderWeeklyTopSellers(paidAll);
   renderWeeklyDrill(paidAll);
   renderWeeklyProducts(paidAll);
   renderWeeklyHealth();
+}
+
+// Top 3 best-selling products (by units) for the selected week, with WoW/MoM flags.
+function renderWeeklyTopSellers(paidAll) {
+  const el = document.getElementById('wrTopSellers');
+  if (!el) return;
+  const { prevWk, monWk } = wrAdjacentWeeks();
+  const agg = wk => {
+    const m = {};
+    if (!wk) return m;
+    paidAll.filter(r => r.weekStart === wk && wrInSeg(r)).forEach(r => {
+      (m[r.productNameRaw] ||= { name: r.displayName, units: 0, rev: 0 });
+      m[r.productNameRaw].units += r.quantity;
+      m[r.productNameRaw].rev   += r.grossRevenue;
+    });
+    return m;
+  };
+  const cur  = agg(weeklyWeekStart);
+  const prev = agg(prevWk);
+  const mon  = agg(monWk);
+  const top  = Object.entries(cur).sort((a, b) => b[1].units - a[1].units).slice(0, 3);
+  if (!top.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `<div class="wr-drill-title">Top 3 sellers · by units this week</div>
+    <div class="kpi-row">` + top.map(([k, d], i) => `<div class="kpi-card" style="border-top-color:#e8c547">
+      <div class="kpi-label">#${i + 1} · ${wrEsc(d.name)}</div>
+      <div class="kpi-value">${d.units.toLocaleString()}<span style="font-size:13px;color:#666"> units</span></div>
+      <div class="kpi-sub">${fmtCurrency(d.rev)}</div>
+      ${wrDelta('WoW', d.units, prev[k]?.units)}
+      ${wrDelta('MoM', d.units, mon[k]?.units)}
+    </div>`).join('') + `</div>`;
 }
 
 // Category → brand → product drill-down
@@ -3674,32 +3811,52 @@ function wrSelectBrand(el) {
 function renderWeeklyDrill(paidAll) {
   const el = document.getElementById('wrDrill');
   if (!weeklyDrillCat) { el.innerHTML = ''; return; }
-  const recs = paidAll.filter(r => r.weekStart === weeklyWeekStart && wrInSeg(r) && r.category === weeklyDrillCat);
+  const { prevWk, monWk } = wrAdjacentWeeks();
+  const inCat = (r, wk) => r.weekStart === wk && wrInSeg(r) && r.category === weeklyDrillCat;
+  const recs = paidAll.filter(r => inCat(r, weeklyWeekStart));
 
-  const bm = {};
-  recs.forEach(r => { (bm[r.brand] ||= { units: 0, rev: 0 }); bm[r.brand].units += r.quantity; bm[r.brand].rev += r.grossRevenue; });
+  // Brand aggregation for a given week (for WoW/MoM flags).
+  const brandAgg = wk => {
+    const m = {};
+    if (!wk) return m;
+    paidAll.filter(r => inCat(r, wk)).forEach(r => { (m[r.brand] ||= { units: 0, rev: 0 }); m[r.brand].units += r.quantity; m[r.brand].rev += r.grossRevenue; });
+    return m;
+  };
+  const bm = brandAgg(weeklyWeekStart);
+  const bPrev = brandAgg(prevWk), bMon = brandAgg(monWk);
   const brands = Object.entries(bm).sort((a, b) => b[1].units - a[1].units);
 
   let html = `<div class="wr-drill-title">${weeklyDrillCat} · by brand — click a brand for products</div><div class="wr-drill-cards">`;
   html += brands.map(([br, d]) => `<div class="kpi-card clickable${br === weeklyDrillBrand ? ' selected' : ''}" data-brand="${br}" onclick="wrSelectBrand(this)">
       <div class="kpi-label">${br}</div>
-      <div class="kpi-value" style="font-size:22px">${d.units}<span style="font-size:12px;color:#666"> u</span></div>
+      <div class="kpi-value" style="font-size:22px">${d.units}<span style="font-size:12px;color:#666"> units</span></div>
       <div class="kpi-sub">${fmtCurrency(d.rev)}</div>
+      ${wrDelta('WoW', d.units, bPrev[br]?.units)}
+      ${wrDelta('MoM', d.units, bMon[br]?.units)}
     </div>`).join('');
   html += `</div>`;
 
   if (weeklyDrillBrand) {
-    const pm = {};
-    recs.filter(r => r.brand === weeklyDrillBrand).forEach(r => {
-      const k = r.productType || r.displayName;
-      (pm[k] ||= { units: 0, rev: 0 }); pm[k].units += r.quantity; pm[k].rev += r.grossRevenue;
-    });
+    // Product aggregation within the drilled brand for a given week.
+    const prodAgg = wk => {
+      const m = {};
+      if (!wk) return m;
+      paidAll.filter(r => inCat(r, wk) && r.brand === weeklyDrillBrand).forEach(r => {
+        const k = r.productType || r.displayName;
+        (m[k] ||= { units: 0, rev: 0 }); m[k].units += r.quantity; m[k].rev += r.grossRevenue;
+      });
+      return m;
+    };
+    const pm = prodAgg(weeklyWeekStart);
+    const pPrev = prodAgg(prevWk), pMon = prodAgg(monWk);
     const prods = Object.entries(pm).sort((a, b) => b[1].units - a[1].units);
     html += `<div class="wr-drill-title">${weeklyDrillBrand} · by product</div><div class="wr-drill-cards">`;
     html += prods.map(([p, d]) => `<div class="kpi-card">
-        <div class="kpi-label">${p}</div>
-        <div class="kpi-value" style="font-size:20px">${d.units}<span style="font-size:12px;color:#666"> u</span></div>
+        <div class="kpi-label">${wrEsc(wrStripBrand(p, weeklyDrillBrand))}</div>
+        <div class="kpi-value" style="font-size:20px">${d.units}<span style="font-size:12px;color:#666"> units</span></div>
         <div class="kpi-sub">${fmtCurrency(d.rev)}</div>
+        ${wrDelta('WoW', d.units, pPrev[p]?.units)}
+        ${wrDelta('MoM', d.units, pMon[p]?.units)}
       </div>`).join('');
     html += `</div>`;
   }
@@ -3708,7 +3865,8 @@ function renderWeeklyDrill(paidAll) {
 
 function renderWeeklyProducts(paidAll) {
   const tb   = document.getElementById('wrProductTbody');
-  const recs = paidAll.filter(r => r.weekStart === weeklyWeekStart && wrInSeg(r));
+  const recs = paidAll.filter(r => r.weekStart === weeklyWeekStart && wrInTableSeg(r));
+  const sortKey = wrTableSort === 'rev' ? 'rev' : 'units';
 
   const bm = {};
   recs.forEach(r => {
@@ -3718,7 +3876,7 @@ function renderWeeklyProducts(paidAll) {
     (bm[r.brand].products[pk] ||= { name: r.displayName, cat: r.category, units: 0, rev: 0, key: pk });
     bm[r.brand].products[pk].units += r.quantity; bm[r.brand].products[pk].rev += r.grossRevenue;
   });
-  const brands = Object.entries(bm).sort((a, b) => b[1].units - a[1].units);
+  const brands = Object.entries(bm).sort((a, b) => b[1][sortKey] - a[1][sortKey]);
   if (!brands.length) { tb.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#666666">No sales this week</td></tr>`; return; }
 
   const rows = [];
@@ -3729,7 +3887,7 @@ function renderWeeklyProducts(paidAll) {
       <td class="right">${data.units.toLocaleString()}</td>
       <td class="right">${fmtCurrency(data.rev)}</td>
       <td class="right" colspan="2"></td></tr>`);
-    Object.values(data.products).sort((a, b) => b.units - a.units).forEach(p => {
+    Object.values(data.products).sort((a, b) => b[sortKey] - a[sortKey]).forEach(p => {
       rows.push(`<tr class="product-row" data-brand-id="${id}">
         <td>${p.name}</td><td>${catBadge(p.cat)}</td>
         <td class="right">${p.units.toLocaleString()}</td>
@@ -3798,6 +3956,19 @@ function initWeekNav() {
       weeklySegment = btn.dataset.seg; weeklyDrillCat = null; weeklyDrillBrand = null;
       renderWeeklyReport();
     });
+  });
+  // Product-table-only filters (segment + sort), independent of the page-level KPIs.
+  document.querySelectorAll('#wrTableSegTabs .sub-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#wrTableSegTabs .sub-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      wrTableSeg = btn.dataset.tseg;
+      renderWeeklyProducts(wrPaidAll());
+    });
+  });
+  document.getElementById('wrTableSortSelect').addEventListener('change', e => {
+    wrTableSort = e.target.value;
+    renderWeeklyProducts(wrPaidAll());
   });
 }
 
