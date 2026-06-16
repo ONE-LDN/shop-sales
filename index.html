@@ -742,7 +742,7 @@
        ══════════════════════════════════════════════════════════ -->
   <div class="section" data-tab="reconcile">
     <div class="pred-note" style="margin-bottom:14px">
-      <strong>How this works:</strong> Each week you count stock twice — mid-week (Wednesday) and end of week (Sunday). This table compares those counts against what the system expects based on your opening count, deliveries received, and units sold. The difference is your <em>variance</em> — positive means more than expected (possible under-ringing or over-delivery), negative means less (shrinkage or waste). Navigate between weeks using the arrows. The first count for any product just sets its baseline; variance appears from the second count onwards.
+      <strong>How this works:</strong> Your Wednesday count sets the opening balance for the week. The table then adds deliveries and subtracts sales to give a theoretical stock level. Your Sunday count is compared against theoretical to show variance — positive means more than expected (possible under-ringing or over-delivery), negative means less (shrinkage or waste). Navigate between weeks using the arrows.
     </div>
     <div class="week-nav">
       <button id="recPrev" class="week-nav-btn">← Prev</button>
@@ -761,7 +761,7 @@
         <thead>
           <tr>
             <th>Product</th>
-            <th class="right">Opening</th>
+            <th class="right" id="recOpenHeader">Opening</th>
             <th class="right">+ Deliveries</th>
             <th class="right">− Sold</th>
             <th class="right">= Theoretical</th>
@@ -4102,12 +4102,15 @@ async function renderStockReconciliation() {
   const endSess    = sessB || sessA;   // latest session of the week = basis for closing variance
 
   // Update dynamic column headers.
-  const wedH = document.getElementById('recWedHeader');
-  const wedV = document.getElementById('recWedVarHeader');
-  const sunH = document.getElementById('recSunHeader');
-  if (wedH) wedH.textContent = sessALabel;
-  if (wedV) wedV.textContent = sessA ? 'Wed Var' : '—';
-  if (sunH) sunH.textContent = sessBLabel;
+  const weekUsesSessAsOpening = sessA !== null;
+  const openH = document.getElementById('recOpenHeader');
+  const wedH  = document.getElementById('recWedHeader');
+  const wedV  = document.getElementById('recWedVarHeader');
+  const sunH  = document.getElementById('recSunHeader');
+  if (openH) openH.textContent = weekUsesSessAsOpening ? sessALabel : 'Opening';
+  if (wedH)  wedH.textContent  = weekUsesSessAsOpening ? '—' : sessALabel;
+  if (wedV)  wedV.textContent  = weekUsesSessAsOpening ? '—' : (sessA ? 'Wed Var' : '—');
+  if (sunH)  sunH.textContent  = sessBLabel;
 
   // History per product (ascending) for finding prior counts.
   const histByProduct = {};
@@ -4141,43 +4144,48 @@ async function renderStockReconciliation() {
     const name = (productLookup[key] || {}).display_name || key;
     const hist = histByProduct[key] || [];
 
-    // Opening = most recent count before this week's first session.
-    const prior    = [...hist].reverse().find(x => x.take_date < (sessA || reconcileDate)) || null;
-    const openDate = prior ? prior.take_date : null;
-    const opening  = prior ? Number(prior.actual_count) : null;
-
-    // Deliveries + sold since opening, up through end of last session this week.
-    let deliv = 0, sold = 0, theo = null;
-    if (openDate && endSess) {
-      deliv = deliveries
-        .filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= endSess)
-        .reduce((s, d) => s + (d.quantity_received || 0), 0);
-      sold = paid
-        .filter(r => r.productNameRaw === key && r.date.slice(0, 10) > openDate && r.date.slice(0, 10) <= endSess)
-        .reduce((s, r) => s + r.quantity, 0);
-      theo = opening + deliv - sold;
-    }
-
     // Per-session actual counts.
     const countAt = sess => {
       if (!sess) return null;
       const t = hist.find(x => x.take_date === sess);
       return t ? Number(t.actual_count) : null;
     };
-    const countA   = countAt(sessA);
-    const countB   = countAt(sessB);
-    const countEnd = countB ?? countA;   // closing = last available count
+    const countA = countAt(sessA);
+    const countB = countAt(sessB);
 
-    // Mid-week variance (Wed vs theoretical-at-that-point).
-    let wedTheo = null, wedVar = null;
-    if (openDate && sessA) {
-      const dA = deliveries.filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= sessA).reduce((s, d) => s + (d.quantity_received || 0), 0);
-      const sA = paid.filter(r => r.productNameRaw === key && r.date.slice(0,10) > openDate && r.date.slice(0,10) <= sessA).reduce((s, r) => s + r.quantity, 0);
-      wedTheo = opening + dA - sA;
-      if (countA !== null) wedVar = countA - wedTheo;
+    // Opening: when a Wed count exists use it as the opening balance for the week;
+    // otherwise fall back to the most recent prior count.
+    const useSessionAsOpening = sessA !== null && countA !== null;
+    const prior    = useSessionAsOpening ? null : ([...hist].reverse().find(x => x.take_date < (sessA || reconcileDate)) || null);
+    const openDate = useSessionAsOpening ? sessA : (prior ? prior.take_date : null);
+    const opening  = useSessionAsOpening ? countA : (prior ? Number(prior.actual_count) : null);
+
+    // Track deliveries/sales to sessB if it exists, else to end of the selected week.
+    const trackTo = useSessionAsOpening ? (sessB || weekEnd) : endSess;
+
+    // Deliveries + sold since opening.
+    let deliv = 0, sold = 0, theo = null;
+    if (openDate && trackTo) {
+      deliv = deliveries
+        .filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= trackTo)
+        .reduce((s, d) => s + (d.quantity_received || 0), 0);
+      sold = paid
+        .filter(r => r.productNameRaw === key && r.date.slice(0, 10) > openDate && r.date.slice(0, 10) <= trackTo)
+        .reduce((s, r) => s + r.quantity, 0);
+      theo = opening + deliv - sold;
     }
 
-    const endVar = (theo !== null && countEnd !== null) ? countEnd - theo : null;
+    // Mid-week variance only applies when using a prior-based opening.
+    let wedVar = null;
+    if (!useSessionAsOpening && openDate && sessA && countA !== null) {
+      const dA = deliveries.filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= sessA).reduce((s, d) => s + (d.quantity_received || 0), 0);
+      const sA = paid.filter(r => r.productNameRaw === key && r.date.slice(0,10) > openDate && r.date.slice(0,10) <= sessA).reduce((s, r) => s + r.quantity, 0);
+      wedVar = countA - (opening + dA - sA);
+    }
+
+    // Closing count: sessB when sessA is opening; otherwise last available count.
+    const closingCount = useSessionAsOpening ? countB : (countB ?? countA);
+    const endVar = (theo !== null && closingCount !== null) ? closingCount - theo : null;
     if (endVar !== null) { netVar += endVar; reconciled++; }
 
     return `<tr>
@@ -4186,9 +4194,9 @@ async function renderStockReconciliation() {
       <td class="right">${openDate ? '+' + deliv : '—'}</td>
       <td class="right">${openDate ? '−' + sold : '—'}</td>
       <td class="right">${theo === null ? '—' : theo}</td>
-      <td class="right">${countA === null ? '—' : countA}</td>
-      ${varCell(wedVar)}
-      <td class="right">${countB === null ? '—' : countB}</td>
+      <td class="right">${useSessionAsOpening ? '—' : (countA === null ? '—' : countA)}</td>
+      ${varCell(useSessionAsOpening ? null : wedVar)}
+      <td class="right">${closingCount === null ? '—' : closingCount}</td>
       ${varCell(endVar)}
     </tr>`;
   });
@@ -4197,7 +4205,7 @@ async function renderStockReconciliation() {
     : `<tr><td colspan="9" style="text-align:center;padding:24px;color:#666666">No ${reconcileSegment} counts in ${weekLabel(reconcileDate)}</td></tr>`;
 
   const sessCount = weekSessions.length;
-  info.textContent = `${weekProductKeys.length} ${reconcileSegment} product${weekProductKeys.length !== 1 ? 's' : ''} · ${sessCount} count session${sessCount !== 1 ? 's' : ''} this week${sessA ? ` (${sessA}${sessB ? ', ' + sessB : ''})` : ''} · variance shown where a prior count exists`;
+  info.textContent = `${weekProductKeys.length} ${reconcileSegment} product${weekProductKeys.length !== 1 ? 's' : ''} · ${sessCount} count session${sessCount !== 1 ? 's' : ''} this week${sessA ? ` (${sessA}${sessB ? ', ' + sessB : ''})` : ''} · ${weekUsesSessAsOpening ? 'Wed count is opening balance; variance shown when Sun count exists' : 'variance shown where a prior count exists'}`;
 
   summary.innerHTML = reconciled
     ? `<div style="margin-top:14px;font-size:13px;color:#9a9a9a">Net end-of-week variance across ${reconciled} reconciled product${reconciled !== 1 ? 's' : ''}: <strong style="color:${netVar < 0 ? '#f87171' : netVar > 0 ? '#4ade80' : '#9a9a9a'}">${netVar > 0 ? '+' + netVar : netVar}</strong> units <span style="color:#666666">(negative = shrinkage / waste)</span></div>`
