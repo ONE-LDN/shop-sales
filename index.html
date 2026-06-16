@@ -761,7 +761,7 @@
         <thead>
           <tr>
             <th>Product</th>
-            <th class="right">Opening</th>
+            <th class="right" id="recOpenHeader">Opening</th>
             <th class="right">+ Deliveries</th>
             <th class="right">− Sold</th>
             <th class="right">= Theoretical</th>
@@ -4146,18 +4146,6 @@ async function renderStockReconciliation() {
     const openDate = prior ? prior.take_date : null;
     const opening  = prior ? Number(prior.actual_count) : null;
 
-    // Deliveries + sold since opening, up through end of last session this week.
-    let deliv = 0, sold = 0, theo = null;
-    if (openDate && endSess) {
-      deliv = deliveries
-        .filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= endSess)
-        .reduce((s, d) => s + (d.quantity_received || 0), 0);
-      sold = paid
-        .filter(r => r.productNameRaw === key && r.date.slice(0, 10) > openDate && r.date.slice(0, 10) <= endSess)
-        .reduce((s, r) => s + r.quantity, 0);
-      theo = opening + deliv - sold;
-    }
-
     // Per-session actual counts.
     const countAt = sess => {
       if (!sess) return null;
@@ -4168,23 +4156,43 @@ async function renderStockReconciliation() {
     const countB   = countAt(sessB);
     const countEnd = countB ?? countA;   // closing = last available count
 
+    // Bootstrap: no prior count exists yet → seed opening from the first count this week.
+    // Once Sunday's count is recorded it becomes next week's prior and this path never fires again.
+    const isBootstrap = !prior && sessA !== null && countA !== null;
+    const effOpenDate = isBootstrap ? sessA  : openDate;
+    const effOpening  = isBootstrap ? countA : opening;
+    const rowEndSess  = isBootstrap ? sessB  : endSess;  // avoid sessA as both open & close
+
+    // Deliveries + sold since opening, up through end of last session this week.
+    let deliv = 0, sold = 0, theo = null;
+    if (effOpenDate && rowEndSess) {
+      deliv = deliveries
+        .filter(d => d.product_name_raw === key && d.delivery_date > effOpenDate && d.delivery_date <= rowEndSess)
+        .reduce((s, d) => s + (d.quantity_received || 0), 0);
+      sold = paid
+        .filter(r => r.productNameRaw === key && r.date.slice(0, 10) > effOpenDate && r.date.slice(0, 10) <= rowEndSess)
+        .reduce((s, r) => s + r.quantity, 0);
+      theo = effOpening + deliv - sold;
+    }
+
     // Mid-week variance (Wed vs theoretical-at-that-point).
     let wedTheo = null, wedVar = null;
-    if (openDate && sessA) {
-      const dA = deliveries.filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= sessA).reduce((s, d) => s + (d.quantity_received || 0), 0);
-      const sA = paid.filter(r => r.productNameRaw === key && r.date.slice(0,10) > openDate && r.date.slice(0,10) <= sessA).reduce((s, r) => s + r.quantity, 0);
-      wedTheo = opening + dA - sA;
+    if (effOpenDate && sessA && !isBootstrap) {
+      const dA = deliveries.filter(d => d.product_name_raw === key && d.delivery_date > effOpenDate && d.delivery_date <= sessA).reduce((s, d) => s + (d.quantity_received || 0), 0);
+      const sA = paid.filter(r => r.productNameRaw === key && r.date.slice(0,10) > effOpenDate && r.date.slice(0,10) <= sessA).reduce((s, r) => s + r.quantity, 0);
+      wedTheo = effOpening + dA - sA;
       if (countA !== null) wedVar = countA - wedTheo;
     }
 
-    const endVar = (theo !== null && countEnd !== null) ? countEnd - theo : null;
+    const closingCount = isBootstrap ? countB : countEnd;
+    const endVar = (theo !== null && closingCount !== null) ? closingCount - theo : null;
     if (endVar !== null) { netVar += endVar; reconciled++; }
 
     return `<tr>
       <td>${name}</td>
-      <td class="right">${opening === null ? '—' : opening}</td>
-      <td class="right">${openDate ? '+' + deliv : '—'}</td>
-      <td class="right">${openDate ? '−' + sold : '—'}</td>
+      <td class="right">${effOpening === null ? '—' : effOpening}</td>
+      <td class="right">${effOpenDate ? '+' + deliv : '—'}</td>
+      <td class="right">${effOpenDate ? '−' + sold : '—'}</td>
       <td class="right">${theo === null ? '—' : theo}</td>
       <td class="right">${countA === null ? '—' : countA}</td>
       ${varCell(wedVar)}
