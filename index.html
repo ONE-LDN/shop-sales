@@ -171,6 +171,8 @@
     .health-badge.reorder { border-left: 3px solid #f87171; }
     .health-badge.healthy { border-left: 3px solid #4ade80; }
     .health-badge.excess  { border-left: 3px solid #e8c547; }
+    .health-badge.urgent-prod .hb-count { font-size: 13px; font-weight: 700; color: #f87171; white-space: nowrap; }
+    .health-badge.urgent-prod .hb-name  { font-size: 12px; color: #cfcfcf; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .kpi-card.clickable { cursor: pointer; }
     .kpi-card.clickable:hover { border-color: #e8c547; }
     .kpi-card.selected { outline: 2px solid #e8c547; }
@@ -726,6 +728,9 @@
        TAB: STOCK RECONCILIATION  (4-tab redesign — read-only, count-to-count)
        ══════════════════════════════════════════════════════════ -->
   <div class="section" data-tab="reconcile">
+    <div class="pred-note" style="margin-bottom:14px">
+      <strong>How this works:</strong> Each week you count stock twice — mid-week (Wednesday) and end of week (Sunday). This table compares those counts against what the system expects based on your opening count, deliveries received, and units sold. The difference is your <em>variance</em> — positive means more than expected (possible under-ringing or over-delivery), negative means less (shrinkage or waste). Navigate between weeks using the arrows. The first count for any product just sets its baseline; variance appears from the second count onwards.
+    </div>
     <div class="week-nav">
       <button id="recPrev" class="week-nav-btn">← Prev</button>
       <span id="recDateLabel" class="week-nav-label">—</span>
@@ -747,7 +752,9 @@
             <th class="right">+ Deliveries</th>
             <th class="right">− Sold</th>
             <th class="right">= Theoretical</th>
-            <th class="right">Closing</th>
+            <th class="right" id="recWedHeader">Wed Count</th>
+            <th class="right" id="recWedVarHeader">Wed Var</th>
+            <th class="right" id="recSunHeader">Sun Count</th>
             <th class="right">Variance</th>
           </tr>
         </thead>
@@ -907,6 +914,9 @@
 
     <!-- ── Cafe sub-section ── -->
     <div class="sub-section active" data-sub="pred-cafe">
+      <div class="pred-note" style="margin-bottom:14px">
+        <strong>How this works:</strong> Each product is assessed against your current order cycle (set below). <strong>Velocity</strong> is the average units sold per week over the last 4 weeks. <strong>Est. Stock</strong> is estimated from your last logged delivery minus everything sold since it arrived. <strong>Covers</strong> is how many days that stock will last at current velocity. <strong>Predicted order</strong> is the quantity needed to top back up to cover your full cycle plus the supplier lead time. Items are flagged 🔴 Order now if they'll run out before any order can arrive, or 🟡 Order soon if they won't survive to your next order run — both appear on the shopping list above the table.
+      </div>
       <div class="pred-controls">
         <select id="predCatFilter">
           <option value="">All categories</option>
@@ -957,6 +967,9 @@
 
     <!-- ── Merch sub-section ── -->
     <div class="sub-section" data-sub="pred-merch">
+      <div class="pred-note" style="margin-bottom:14px">
+        <strong>How this works:</strong> Same logic as Cafe but scaled to an 8-week restocking horizon with a 14-day supplier lead time, reflecting slower-moving merch and longer production runs. Items are flagged when estimated stock won't last until the next order arrives. Stock is estimated from the last logged delivery minus units sold since then — log each delivery to keep estimates accurate.
+      </div>
       <div class="pred-controls">
         <select id="predMerchCollFilter">
           <option value="">All collections</option>
@@ -1729,6 +1742,16 @@ async function loadFromSupabase() {
     }
 
     if (!allData.length) return false;
+    // Drop isolated early outlier rows: if any dates are >90 days before the
+    // bulk of the data (the most-recent 90th-percentile date), exclude them.
+    // This removes the stray May 2024 block without touching the database.
+    const dates = allData.map(r => (r.date || '').slice(0, 10)).filter(Boolean).sort();
+    if (dates.length > 10) {
+      const p90 = dates[Math.floor(dates.length * 0.9)];
+      const cutoff = new Date(p90); cutoff.setDate(cutoff.getDate() - 90);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      allData = allData.filter(r => !r.date || r.date.slice(0, 10) >= cutoffStr);
+    }
     allRecords = allData.map(enrichRecord);
     document.getElementById('dataDot').classList.add('live');
     return true;
@@ -3928,7 +3951,7 @@ function renderWeeklyHealth() {
     const healthy = sufficient.length - excess;
     const seg = weeklySegment === 'merch' ? 'Merch' : '';
 
-     // 3 most urgent products: order-now first, then by fewest days of cover left.
+    // 3 most urgent products: order-now first, then by fewest days of cover left.
     const urgent = reorderRows
       .map(r => ({ ...r, covers: r.avgPerWeek > 0 ? Math.round(r.estStock / r.avgPerWeek * 7) : Infinity }))
       .sort((a, b) => a.flagOrder - b.flagOrder || a.covers - b.covers)
@@ -3999,8 +4022,22 @@ function fmtFullDate(iso) {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
+// Returns the ISO Monday (YYYY-MM-DD) of the week containing dateStr.
+function recMondayOf(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const day = d.getUTCDay();                        // 0=Sun
+  const diff = day === 0 ? -6 : 1 - day;           // shift back to Monday
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
 function recSessionDates() {
   return [...new Set((allStockTakes || []).map(t => t.take_date))].sort().reverse();
+}
+
+// recWeeks: unique week-Mondays derived from all take_dates, newest first.
+function recWeeks() {
+  return [...new Set(recSessionDates().map(recMondayOf))].sort().reverse();
 }
 
 async function renderStockReconciliation() {
@@ -4010,28 +4047,54 @@ async function renderStockReconciliation() {
   const info    = document.getElementById('recInfo');
   const summary = document.getElementById('recSummary');
 
-  const sessions = [...new Set(takes.map(t => t.take_date))].sort().reverse();
-  if (!sessions.length) {
+  const weeks = recWeeks();
+  if (!weeks.length) {
     document.getElementById('recDateLabel').textContent = 'No counts yet';
     sel.innerHTML = '';
     document.getElementById('recPrev').disabled = true;
     document.getElementById('recNext').disabled = true;
     info.textContent = 'No stock takes submitted yet. Counts entered in the Stock Take Google Sheet will appear here automatically.';
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:#666666">Waiting for the first stock take</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:#666666">Waiting for the first stock take</td></tr>`;
     summary.innerHTML = '';
     return;
   }
 
-  if (!reconcileDate || !sessions.includes(reconcileDate)) reconcileDate = sessions[0];
-  const di = sessions.indexOf(reconcileDate);
-  document.getElementById('recPrev').disabled = di >= sessions.length - 1; // Prev = older
-  document.getElementById('recNext').disabled = di <= 0;                    // Next = newer
-  document.getElementById('recDateLabel').textContent = fmtFullDate(reconcileDate);
-  sel.innerHTML = sessions.map(d => `<option value="${d}"${d === reconcileDate ? ' selected' : ''}>${fmtFullDate(d)}</option>`).join('');
+  // reconcileDate stores the Monday of the selected week.
+  const validWeek = w => weeks.includes(w);
+  if (!reconcileDate || !validWeek(reconcileDate)) reconcileDate = weeks[0];
+  const wi = weeks.indexOf(reconcileDate);
+  document.getElementById('recPrev').disabled = wi >= weeks.length - 1;
+  document.getElementById('recNext').disabled = wi <= 0;
 
-  const T = reconcileDate;
+  // Label as "week of DD Mon YYYY"
+  const weekLabel = iso => {
+    const sun = new Date(iso + 'T00:00:00Z'); sun.setUTCDate(sun.getUTCDate() + 6);
+    return `w/c ${fmtFullDate(iso)}`;
+  };
+  document.getElementById('recDateLabel').textContent = weekLabel(reconcileDate);
+  sel.innerHTML = weeks.map(w => `<option value="${w}"${w === reconcileDate ? ' selected' : ''}>${weekLabel(w)}</option>`).join('');
 
-  // History per product (ascending) so we can find each product's prior count.
+  // All sessions within the selected week, sorted chronologically.
+  const weekEnd = (() => { const d = new Date(reconcileDate + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return d.toISOString().slice(0, 10); })();
+  const weekSessions = [...new Set(takes.map(t => t.take_date))]
+    .filter(d => d >= reconcileDate && d <= weekEnd)
+    .sort();
+
+  // Pair sessions: first = mid-week (Wed), second = end-of-week (Sun).
+  const [sessA, sessB] = [weekSessions[0] || null, weekSessions[1] || null];
+  const sessALabel = sessA ? fmtFullDate(sessA) : 'Wed Count';
+  const sessBLabel = sessB ? fmtFullDate(sessB) : 'Sun Count';
+  const endSess    = sessB || sessA;   // latest session of the week = basis for closing variance
+
+  // Update dynamic column headers.
+  const wedH = document.getElementById('recWedHeader');
+  const wedV = document.getElementById('recWedVarHeader');
+  const sunH = document.getElementById('recSunHeader');
+  if (wedH) wedH.textContent = sessALabel;
+  if (wedV) wedV.textContent = sessA ? 'Wed Var' : '—';
+  if (sunH) sunH.textContent = sessBLabel;
+
+  // History per product (ascending) for finding prior counts.
   const histByProduct = {};
   takes.forEach(t => { (histByProduct[t.product_name_raw] ||= []).push(t); });
   Object.values(histByProduct).forEach(a => a.sort((x, y) => x.take_date.localeCompare(y.take_date)));
@@ -4042,64 +4105,98 @@ async function renderStockReconciliation() {
   };
   const paid = allRecords.filter(r => (r.state || 'Paid') !== 'Refunded');
 
-  const counted = takes
-    .filter(t => t.take_date === T && inSeg(t.product_name_raw))
-    .sort((a, b) => {
-      const an = (productLookup[a.product_name_raw] || {}).display_name || a.product_name_raw;
-      const bn = (productLookup[b.product_name_raw] || {}).display_name || b.product_name_raw;
-      return an.localeCompare(bn);
-    });
+  // Union of products counted in any session this week.
+  const weekProductKeys = [...new Set(
+    takes.filter(t => t.take_date >= reconcileDate && t.take_date <= weekEnd && inSeg(t.product_name_raw))
+         .map(t => t.product_name_raw)
+  )].sort((a, b) => {
+    const an = (productLookup[a] || {}).display_name || a;
+    const bn = (productLookup[b] || {}).display_name || b;
+    return an.localeCompare(bn);
+  });
+
+  const varCell = (v) => {
+    if (v === null) return `<td class="right" style="color:#666666">—</td>`;
+    const col = v < 0 ? '#f87171' : v > 0 ? '#4ade80' : '#cfcfcf';
+    return `<td class="right" style="color:${col};font-weight:600">${v > 0 ? '+' + v : v}</td>`;
+  };
 
   let netVar = 0, reconciled = 0;
-  const rows = counted.map(t => {
-    const key   = t.product_name_raw;
-    const name  = (productLookup[key] || {}).display_name || key;
-    const hist  = histByProduct[key] || [];
-    const prior = [...hist].reverse().find(x => x.take_date < T) || null;
+  const rows = weekProductKeys.map(key => {
+    const name = (productLookup[key] || {}).display_name || key;
+    const hist = histByProduct[key] || [];
+
+    // Opening = most recent count before this week's first session.
+    const prior    = [...hist].reverse().find(x => x.take_date < (sessA || reconcileDate)) || null;
     const openDate = prior ? prior.take_date : null;
     const opening  = prior ? Number(prior.actual_count) : null;
-    const closing  = Number(t.actual_count);
 
-    let deliv = 0, sold = 0, theo = null, variance = null;
-    if (openDate) {
+    // Deliveries + sold since opening, up through end of last session this week.
+    let deliv = 0, sold = 0, theo = null;
+    if (openDate && endSess) {
       deliv = deliveries
-        .filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= T)
+        .filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= endSess)
         .reduce((s, d) => s + (d.quantity_received || 0), 0);
       sold = paid
-        .filter(r => r.productNameRaw === key && r.date.slice(0, 10) > openDate && r.date.slice(0, 10) <= T)
+        .filter(r => r.productNameRaw === key && r.date.slice(0, 10) > openDate && r.date.slice(0, 10) <= endSess)
         .reduce((s, r) => s + r.quantity, 0);
       theo = opening + deliv - sold;
-      variance = closing - theo;
-      netVar += variance; reconciled++;
     }
-    const vColor = variance === null ? '#666666' : variance < 0 ? '#f87171' : variance > 0 ? '#4ade80' : '#cfcfcf';
+
+    // Per-session actual counts.
+    const countAt = sess => {
+      if (!sess) return null;
+      const t = hist.find(x => x.take_date === sess);
+      return t ? Number(t.actual_count) : null;
+    };
+    const countA   = countAt(sessA);
+    const countB   = countAt(sessB);
+    const countEnd = countB ?? countA;   // closing = last available count
+
+    // Mid-week variance (Wed vs theoretical-at-that-point).
+    let wedTheo = null, wedVar = null;
+    if (openDate && sessA) {
+      const dA = deliveries.filter(d => d.product_name_raw === key && d.delivery_date > openDate && d.delivery_date <= sessA).reduce((s, d) => s + (d.quantity_received || 0), 0);
+      const sA = paid.filter(r => r.productNameRaw === key && r.date.slice(0,10) > openDate && r.date.slice(0,10) <= sessA).reduce((s, r) => s + r.quantity, 0);
+      wedTheo = opening + dA - sA;
+      if (countA !== null) wedVar = countA - wedTheo;
+    }
+
+    const endVar = (theo !== null && countEnd !== null) ? countEnd - theo : null;
+    if (endVar !== null) { netVar += endVar; reconciled++; }
+
     return `<tr>
       <td>${name}</td>
       <td class="right">${opening === null ? '—' : opening}</td>
       <td class="right">${openDate ? '+' + deliv : '—'}</td>
       <td class="right">${openDate ? '−' + sold : '—'}</td>
       <td class="right">${theo === null ? '—' : theo}</td>
-      <td class="right">${closing}</td>
-      <td class="right" style="color:${vColor};font-weight:600">${variance === null ? '—' : (variance > 0 ? '+' + variance : variance)}</td>
+      <td class="right">${countA === null ? '—' : countA}</td>
+      ${varCell(wedVar)}
+      <td class="right">${countB === null ? '—' : countB}</td>
+      ${varCell(endVar)}
     </tr>`;
   });
 
   tbody.innerHTML = rows.length ? rows.join('')
-    : `<tr><td colspan="7" style="text-align:center;padding:24px;color:#666666">No ${reconcileSegment} counts on ${fmtFullDate(T)}</td></tr>`;
-  info.textContent = `${counted.length} ${reconcileSegment} product${counted.length !== 1 ? 's' : ''} counted on ${fmtFullDate(T)} · variance shown where a prior count exists. First count for a product just sets its baseline.`;
+    : `<tr><td colspan="9" style="text-align:center;padding:24px;color:#666666">No ${reconcileSegment} counts in ${weekLabel(reconcileDate)}</td></tr>`;
+
+  const sessCount = weekSessions.length;
+  info.textContent = `${weekProductKeys.length} ${reconcileSegment} product${weekProductKeys.length !== 1 ? 's' : ''} · ${sessCount} count session${sessCount !== 1 ? 's' : ''} this week${sessA ? ` (${sessA}${sessB ? ', ' + sessB : ''})` : ''} · variance shown where a prior count exists`;
+
   summary.innerHTML = reconciled
-    ? `<div style="margin-top:14px;font-size:13px;color:#9a9a9a">Net variance across ${reconciled} reconciled product${reconciled !== 1 ? 's' : ''}: <strong style="color:${netVar < 0 ? '#f87171' : netVar > 0 ? '#4ade80' : '#9a9a9a'}">${netVar > 0 ? '+' + netVar : netVar}</strong> units <span style="color:#666666">(negative = shrinkage / waste)</span></div>`
+    ? `<div style="margin-top:14px;font-size:13px;color:#9a9a9a">Net end-of-week variance across ${reconciled} reconciled product${reconciled !== 1 ? 's' : ''}: <strong style="color:${netVar < 0 ? '#f87171' : netVar > 0 ? '#4ade80' : '#9a9a9a'}">${netVar > 0 ? '+' + netVar : netVar}</strong> units <span style="color:#666666">(negative = shrinkage / waste)</span></div>`
     : '';
 }
 
 function initReconcileNav() {
   document.getElementById('recPrev').addEventListener('click', () => {
-    const ds = recSessionDates(); const i = ds.indexOf(reconcileDate);
-    if (i < ds.length - 1) { reconcileDate = ds[i + 1]; renderStockReconciliation(); }
+    const ws = recWeeks(); const i = ws.indexOf(reconcileDate);
+    if (i < ws.length - 1) { reconcileDate = ws[i + 1]; renderStockReconciliation(); }
   });
   document.getElementById('recNext').addEventListener('click', () => {
-    const ds = recSessionDates(); const i = ds.indexOf(reconcileDate);
-    if (i > 0) { reconcileDate = ds[i - 1]; renderStockReconciliation(); }
+    const ws = recWeeks(); const i = ws.indexOf(reconcileDate);
+    if (i > 0) { reconcileDate = ws[i - 1]; renderStockReconciliation(); }
   });
   document.getElementById('recDateSelect').addEventListener('change', e => {
     reconcileDate = e.target.value; renderStockReconciliation();
