@@ -927,7 +927,7 @@
     <!-- ── Cafe sub-section ── -->
     <div class="sub-section active" data-sub="pred-cafe">
       <div class="pred-note" style="margin-bottom:14px">
-        <strong>How this works:</strong> Each product is assessed against your current order cycle (set below). <strong>Velocity</strong> is the average units sold per week over the last 4 weeks. <strong>Est. Stock</strong> is estimated from your last logged delivery minus everything sold since it arrived. <strong>Covers</strong> is how many days that stock will last at current velocity. <strong>Predicted order</strong> is the quantity needed to top back up to cover your full cycle plus the supplier lead time. Items are flagged 🔴 Order now if they'll run out before any order can arrive, or 🟡 Order soon if they won't survive to your next order run — both appear on the shopping list above the table.
+        <strong>How this works:</strong> The <strong>Order by</strong> date is when the next order is due — your last logged delivery plus a fixed reorder cadence (~10–11 days). Allow ~3–4 days' supplier lead time on top, so an item flags 🟡 Order soon as that date approaches and 🔴 Order now once it's reached. <strong>Predicted order</strong> is the quantity needed to cover one cycle plus lead time at current sales velocity. The shopping list above the table holds only the 🔴 Order now items — what to buy in the next order run.
       </div>
       <div class="pred-controls">
         <select id="predCatFilter">
@@ -945,12 +945,6 @@
           <option value="sufficient">🟢 Sufficient</option>
           <option value="no-data">⚪ No stock data</option>
         </select>
-        <select id="predCycleSelect" title="How often you place orders">
-          <option value="1">Order cycle: weekly</option>
-          <option value="2" selected>Order cycle: 2 weeks</option>
-          <option value="3">Order cycle: 3 weeks</option>
-          <option value="4">Order cycle: 4 weeks</option>
-        </select>
         <button class="pred-reload-btn" id="predReloadBtn">↻ Refresh</button>
         <a class="pred-reload-btn" href="https://www.musclefinesse.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none">Order on Muscle Finesse ↗</a>
         <span class="pred-meta" id="predMeta"></span>
@@ -965,8 +959,6 @@
               <th>Brand</th>
               <th>Category</th>
               <th class="right">Avg / wk</th>
-              <th class="right">Est. Stock</th>
-              <th>Covers</th>
               <th class="right">Predicted Order</th>
               <th class="right">Last Delivery</th>
               <th class="right">Order by</th>
@@ -981,7 +973,7 @@
     <!-- ── Merch sub-section ── -->
     <div class="sub-section" data-sub="pred-merch">
       <div class="pred-note" style="margin-bottom:14px">
-        <strong>How this works:</strong> Same logic as Cafe but scaled to an 8-week restocking horizon with a 14-day supplier lead time, reflecting slower-moving merch and longer production runs. Items are flagged when estimated stock won't last until the next order arrives. Stock is estimated from the last logged delivery minus units sold since then — log each delivery to keep estimates accurate.
+        <strong>How this works:</strong> Same delivery-anchored logic as Cafe but on an 8-week restock cycle with a 14-day supplier lead time, reflecting slower-moving merch and longer production runs. The <strong>Order by</strong> date is your last logged delivery plus that cycle; items flag 🟡 Order soon within the lead-time window and 🔴 Order now once due. Log each delivery to keep the next-order date accurate.
       </div>
       <div class="pred-controls">
         <select id="predMerchCollFilter">
@@ -1007,8 +999,6 @@
               <th>Colourway</th>
               <th>Size</th>
               <th class="right">Avg / wk</th>
-              <th class="right">Est. Stock</th>
-              <th>Covers</th>
               <th class="right">Predicted Order</th>
               <th class="right">Last Delivery</th>
               <th class="right">Order by</th>
@@ -1952,37 +1942,60 @@ function showUnmatchedWarn(containerId) {
 // ── Stock flag helpers (used by Summary KPI cards + Order Prediction badge) ──
 
 // ── Ordering model — single source of truth for cadence ─────────────────────
-// Periodic-review (order-up-to): at each review you order enough to cover until
-// the *next* order lands, i.e. cycle + lead time of demand. Flags follow the
-// same horizon so nothing slips through between order runs:
-//   order-now  : cover won't outlast the lead time (stocks out before any order arrives)
-//   order-soon : cover won't reach the next order's arrival (cycle + lead)
+// Delivery-anchored ordering model: the next order date is driven by the last
+// logged delivery plus a fixed reorder cadence (you reorder on a regular rhythm,
+// not when velocity says you'll run dry). The supplier lead time is the warning
+// window before that date. Flags:
+//   order-now  : the next order date has arrived (today is at/past it)
+//   order-soon : the next order date is within the supplier lead time
 //   sufficient : beyond that
-let orderCycleWeeks = 2;                       // cafe review cadence (user-configurable)
-const CAFE_LEAD_DAYS  = 7;                     // cafe supplier lead time
+// Velocity is still used only to suggest the order *quantity*.
+const CAFE_LEAD_DAYS    = 4;                   // cafe supplier lead time (≈3–4 days)
+const CAFE_CADENCE_DAYS = 11;                  // cafe reorder cadence: order ~every 10–11 days
 const MERCH_CYCLE_WEEKS = 8;                   // merch restock horizon (longer lead supplier)
-const MERCH_LEAD_DAYS = 14;
+const MERCH_LEAD_DAYS   = 14;
 
 function orderModel(isMerch) {
   return isMerch
-    ? { cycleWeeks: MERCH_CYCLE_WEEKS, leadDays: MERCH_LEAD_DAYS }
-    : { cycleWeeks: orderCycleWeeks,   leadDays: CAFE_LEAD_DAYS };
+    ? { cadenceDays: MERCH_CYCLE_WEEKS * 7, leadDays: MERCH_LEAD_DAYS }
+    : { cadenceDays: CAFE_CADENCE_DAYS,     leadDays: CAFE_LEAD_DAYS };
 }
 
-// Derive covers / flag / suggested order quantity from estimated stock + velocity.
-// estStock may be null (no delivery logged) → 'no-data'.
-function classifyStock(estStock, avgPerWeek, isMerch) {
-  const { cycleWeeks, leadDays } = orderModel(isMerch);
-  const horizonDays = cycleWeeks * 7 + leadDays;   // one order must cover until the next lands
-  if (estStock === null) return { coversDays: null, flag: 'no-data', flagOrder: 3, predictedOrder: null, horizonDays, leadDays };
-  const coversDays = avgPerWeek > 0 ? Math.round((estStock / avgPerWeek) * 7) : Infinity;
-  const predictedOrder = Math.max(0, Math.ceil((avgPerWeek * horizonDays / 7) - estStock));
+// Next order date = last delivery date + reorder cadence. Returns the JS Date and
+// the whole-day count from today (negative = overdue), or null if no delivery logged.
+function nextOrderDate(lastDelivDate, cadenceDays) {
+  if (!lastDelivDate) return null;
+  const d = new Date(lastDelivDate + 'T00:00:00');
+  d.setDate(d.getDate() + cadenceDays);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const daysUntil = Math.round((d - today) / 86400000);
+  return { date: d, daysUntil };
+}
+
+// Flag + suggested order quantity from the delivery-anchored model.
+// estStock / lastDelivDate may be null (no delivery logged) → 'no-data'.
+function classifyStock(estStock, avgPerWeek, isMerch, lastDelivDate) {
+  const { cadenceDays, leadDays } = orderModel(isMerch);
+  const horizonDays = cadenceDays + leadDays;   // qty must cover until the next order lands
+  // Suggested quantity still comes from velocity: top up to one cadence + lead of cover.
+  const predictedOrder = estStock === null
+    ? null
+    : Math.max(0, Math.ceil((avgPerWeek * horizonDays / 7) - estStock));
+  const next = nextOrderDate(lastDelivDate, cadenceDays);
   let flag, flagOrder;
-  if (avgPerWeek === 0)               { flag = 'sufficient'; flagOrder = 4; }   // no velocity → no urgency
-  else if (coversDays >= horizonDays) { flag = 'sufficient'; flagOrder = 2; }
-  else if (coversDays >= leadDays)    { flag = 'order-soon'; flagOrder = 1; }
-  else                                { flag = 'order-now';  flagOrder = 0; }
-  return { coversDays, flag, flagOrder, predictedOrder, horizonDays, leadDays };
+  if (estStock === null || !next)      { flag = 'no-data';    flagOrder = 3; }
+  else if (avgPerWeek === 0)           { flag = 'sufficient'; flagOrder = 4; }   // not selling → no urgency
+  else if (next.daysUntil <= 0)        { flag = 'order-now';  flagOrder = 0; }
+  else if (next.daysUntil <= leadDays) { flag = 'order-soon'; flagOrder = 1; }
+  else                                 { flag = 'sufficient'; flagOrder = 2; }
+  return { flag, flagOrder, predictedOrder, cadenceDays, leadDays,
+           nextDate: next ? next.date : null, daysUntil: next ? next.daysUntil : null };
+}
+
+// "Order by" label from a classifyStock result: '—' (no data), 'Now' (due), or a date.
+function orderByLabel(c) {
+  if (!c.nextDate) return '—';
+  return c.daysUntil <= 0 ? 'Now' : c.nextDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 function computeStockDetails(deliveries) {
@@ -2027,8 +2040,8 @@ function computeStockDetails(deliveries) {
     const estStock   = Math.max(0, dInfo.lastDelivQty - soldSince);
     const minStock   = info.min_stock_units ?? null;
 
-    // Flags + suggested quantity from the shared periodic-review model.
-    const c = classifyStock(estStock, avgPerWeek, isMerch);
+    // Flags + suggested quantity from the shared delivery-anchored model.
+    const c = classifyStock(estStock, avgPerWeek, isMerch, dInfo.lastDelivDate);
     let flag = c.flag, flagOrder = c.flagOrder;
     if (minStock !== null && estStock < minStock) { flag = 'order-now'; flagOrder = 0; }
 
@@ -3330,34 +3343,23 @@ async function fillCostFromDeliveries() {
     : 'No new data to fill (products already have values or no delivery data found).';
 }
 
-// ── WS3d: next-order date + auto shopping list ─────────────────────────────
-// Reorder = order-now OR order-soon (the old two tiers consolidated). The next
-// order is due when covers fall to the lead-time buffer (cafe 7d / merch 14d).
-function buildNextOrder(estStock, avgPerWeek, coversDays, isMerch) {
-  if (estStock === null || avgPerWeek <= 0 || coversDays === Infinity) return { days: null, label: '—' };
-  const { leadDays } = orderModel(isMerch);   // order due when cover falls to the lead time
-  const days = Math.max(0, coversDays - leadDays);
-  const dt = new Date(); dt.setDate(dt.getDate() + days);
-  return { days, label: days <= 0 ? 'Now' : dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) };
-}
-
+// ── Auto shopping list ─────────────────────────────────────────────────────
+// The list holds only what's due in the imminent order run (order-now items);
+// order-soon items stay visible in the table but don't clutter the buy list.
 function renderShoppingList(containerId, reorderRows, orderLink) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  if (!reorderRows.length) { el.innerHTML = `<div class="shopping-list empty">✓ Nothing to reorder right now</div>`; return; }
-  const minDays = reorderRows.map(r => r.daysToReorder).filter(d => d !== null && d !== undefined).sort((a, b) => a - b)[0] ?? 0;
-  const dt = new Date(); dt.setDate(dt.getDate() + minDays);
-  const soonest = minDays <= 0 ? 'Now' : dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  if (!reorderRows.length) { el.innerHTML = `<div class="shopping-list empty">✓ Nothing to order right now</div>`; return; }
   const items = reorderRows
-    .slice().sort((a, b) => (a.daysToReorder ?? 1e9) - (b.daysToReorder ?? 1e9) || b.avgPerWeek - a.avgPerWeek)
+    .slice().sort((a, b) => b.avgPerWeek - a.avgPerWeek)
     .map(r => {
       const info = productLookup[r.key] || {};
       const pack = info.pack_size && r.predictedOrder > 0 ? ` (${Math.ceil(r.predictedOrder / info.pack_size)}×${info.pack_size})` : '';
       const qty = (r.predictedOrder != null && r.predictedOrder > 0) ? `${r.predictedOrder} units${pack}` : 'top up';
-      return `<li><span>${r.displayName}</span><span class="sl-qty">${qty} · by ${r.nextOrderLabel}</span></li>`;
+      return `<li><span>${r.displayName}</span><span class="sl-qty">${qty}</span></li>`;
     }).join('');
   el.innerHTML = `<div class="shopping-list">
-    <div class="sl-head"><strong>Next order: ${soonest}</strong> · ${reorderRows.length} item${reorderRows.length !== 1 ? 's' : ''}${orderLink ? ` · <a href="${orderLink}" target="_blank" rel="noopener noreferrer">Order ↗</a>` : ''}</div>
+    <div class="sl-head"><strong>Order now</strong> · ${reorderRows.length} item${reorderRows.length !== 1 ? 's' : ''}${orderLink ? ` · <a href="${orderLink}" target="_blank" rel="noopener noreferrer">Order ↗</a>` : ''}</div>
     <ul class="sl-items">${items}</ul></div>`;
 }
 
@@ -3368,7 +3370,7 @@ async function renderOrderPrediction() {
   const tbody   = document.getElementById('predTbody');
   const metaEl  = document.getElementById('predMeta');
   const noteEl  = document.getElementById('predNote');
-  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
 
   const deliveries = await loadDeliveries();
 
@@ -3444,16 +3446,14 @@ async function renderOrderPrediction() {
       lastDelivDate = dInfo.lastDelivDate;
     }
 
-    // ── Covers / flag / predicted order from the shared periodic-review model ──
-    const c = classifyStock(estStock, avgPerWeek, false);
-    const coversDays = c.coversDays;
+    // ── Flag / predicted order / next-order date from the delivery-anchored model ──
+    const c = classifyStock(estStock, avgPerWeek, false, lastDelivDate);
     const predictedOrder = c.predictedOrder;
     const flag = c.flag, flagOrder = c.flagOrder;
 
-    const no = buildNextOrder(estStock, avgPerWeek, coversDays, false);
     const reorder = (flag === 'order-now' || flag === 'order-soon');
-    rows.push({ key, displayName, brand, cat, avgPerWeek, estStock, coversDays, predictedOrder, flag, flagOrder, lastDelivDate,
-                reorder, daysToReorder: no.days, nextOrderLabel: no.label });
+    rows.push({ key, displayName, brand, cat, avgPerWeek, estStock, predictedOrder, flag, flagOrder, lastDelivDate,
+                reorder, nextOrderLabel: orderByLabel(c) });
   }
 
   // ── Populate brand filter ──
@@ -3490,32 +3490,14 @@ async function renderOrderPrediction() {
   };
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#666666;padding:24px">No products match current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#666666;padding:24px">No products match current filters.</td></tr>';
   } else {
     tbody.innerHTML = filtered.map(r => {
-      // Covers bar: clamp to 0–28 days for visual
-      const barPct = r.coversDays === null ? 0
-        : r.coversDays === Infinity ? 100
-        : Math.min(100, (r.coversDays / 28) * 100);
-      const barCol = r.flag === 'order-now' ? '#f87171'
-        : r.flag === 'order-soon' ? '#e8c547'
-        : r.flag === 'sufficient' ? '#4ade80' : '#4a4f66';
-
-      const coversCell = r.coversDays === null
-        ? '<span style="color:#4a4f66">—</span>'
-        : r.coversDays === Infinity
-          ? `<div class="covers-bar-wrap"><div class="covers-bar"><div class="covers-bar-fill" style="width:100%;background:${barCol}"></div></div><span style="color:#4a4f66;font-size:11px">∞</span></div>`
-          : `<div class="covers-bar-wrap"><div class="covers-bar"><div class="covers-bar-fill" style="width:${barPct}%;background:${barCol}"></div></div><span style="font-size:11px;white-space:nowrap">${r.coversDays}d</span></div>`;
-
       const predCell = r.predictedOrder === null
         ? '<span style="color:#4a4f66">—</span>'
         : r.predictedOrder === 0
           ? '<span class="pred-order-qty zero">0</span>'
           : `<span class="pred-order-qty">${r.predictedOrder} units</span>`;
-
-      const estStockCell = r.estStock === null
-        ? '<span style="color:#4a4f66">—</span>'
-        : `${r.estStock}`;
 
       const lastDelCell = r.lastDelivDate
         ? (() => { const [y,m,d] = r.lastDelivDate.split('-'); return `${d}/${m}/${y}`; })()
@@ -3533,8 +3515,6 @@ async function renderOrderPrediction() {
         <td style="color:#666666">${r.brand}</td>
         <td style="color:#666666">${r.cat}</td>
         <td class="right">${r.avgPerWeek > 0 ? r.avgPerWeek.toFixed(1) : '—'}</td>
-        <td class="right">${estStockCell}</td>
-        <td>${coversCell}</td>
         <td class="right">${predCell}</td>
         <td class="right" style="color:#666666;font-size:11px">${lastDelCell}</td>
         <td class="right" style="font-size:11px">${orderByCell}</td>
@@ -3542,35 +3522,32 @@ async function renderOrderPrediction() {
     }).join('');
   }
 
-  // ── Shopping list (all reorder items, independent of table filters) ──
-  renderShoppingList('predShoppingList', rows.filter(r => r.reorder), 'https://www.musclefinesse.com');
+  // ── Shopping list (order-now items only, independent of table filters) ──
+  renderShoppingList('predShoppingList', rows.filter(r => r.flag === 'order-now'), 'https://www.musclefinesse.com');
 
   // ── Meta + note ──
-  const reorderCount = filtered.filter(r => r.reorder).length;
-  metaEl.textContent = `${filtered.length} products · ${reorderCount} to reorder`;
+  const orderNowCount = filtered.filter(r => r.flag === 'order-now').length;
+  metaEl.textContent = `${filtered.length} products · ${orderNowCount} to order now`;
 
   const cutoffStr = velCutoffWk
     ? (() => { const [y,m,d] = velCutoffWk.split('-'); return `${d}/${m}/${y}`; })()
     : 'all time';
-  const cycleLabel = orderCycleWeeks === 1 ? 'weekly' : `${orderCycleWeeks}-week`;
   noteEl.innerHTML =
-    `<strong>How this works:</strong> Velocity = avg units/week over the last ${velWeeksActual} weeks of data (from ${cutoffStr}). ` +
-    `Estimated stock = units received in last delivery − units sold since that delivery. ` +
-    `Predicted order = units needed to cover your <strong>${cycleLabel} order cycle</strong> plus the ${CAFE_LEAD_DAYS}-day supplier lead time, at current velocity. ` +
-    `Items are flagged to reorder if they won't last until your next order arrives. ` +
-    `Products with no delivery logged show velocity only — log a delivery to unlock stock estimates.`;
+    `<strong>How this works:</strong> <strong>Order by</strong> is the date the next order is due — your last logged delivery plus a ${CAFE_CADENCE_DAYS}-day reorder cadence. ` +
+    `Allow ~${CAFE_LEAD_DAYS} days' supplier lead time on top, so items flag 🟡 Order soon within ${CAFE_LEAD_DAYS} days of that date and 🔴 Order now once it arrives. ` +
+    `Predicted order = units to cover one ${CAFE_CADENCE_DAYS}-day cycle plus lead time, based on velocity (avg units/week over the last ${velWeeksActual} weeks from ${cutoffStr}). ` +
+    `Products with no delivery logged can't show a next-order date — log a delivery to start the cadence.`;
 }
 
 async function renderMerchOrderPrediction() {
   const tbody  = document.getElementById('predMerchTbody');
   const metaEl = document.getElementById('predMerchMeta');
   const noteEl = document.getElementById('predMerchNote');
-  tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666666;padding:24px">Loading…</td></tr>';
 
   const deliveries = await loadDeliveries();
 
   const VELOCITY_WEEKS = 4;
-  const CYCLE_WEEKS    = MERCH_CYCLE_WEEKS;   // merch restock horizon (bar scale)
   const paid = allRecords.filter(r => (r.state || 'Paid') !== 'Refunded' && r.category === 'Merch');
   const allWeeks = getWeekKeys(paid);
   const velCutoffWk = allWeeks.length >= VELOCITY_WEEKS ? allWeeks.slice(-VELOCITY_WEEKS)[0] : allWeeks[0] || null;
@@ -3622,16 +3599,14 @@ async function renderMerchOrderPrediction() {
       lastDelivDate = dInfo.lastDelivDate;
     }
 
-    // Covers / flag / predicted order from the shared periodic-review model (merch horizon).
-    const c = classifyStock(estStock, avgPerWeek, true);
-    const coversDays = c.coversDays;
+    // Flag / predicted order / next-order date from the delivery-anchored model (merch horizon).
+    const c = classifyStock(estStock, avgPerWeek, true, lastDelivDate);
     const predictedOrder = c.predictedOrder;
     const flag = c.flag, flagOrder = c.flagOrder;
 
-    const no = buildNextOrder(estStock, avgPerWeek, coversDays, true);
     const reorder = (flag === 'order-now' || flag === 'order-soon');
-    rows.push({ key, displayName, collection, colourway, size, avgPerWeek, estStock, coversDays, predictedOrder, flag, flagOrder, lastDelivDate,
-                reorder, daysToReorder: no.days, nextOrderLabel: no.label });
+    rows.push({ key, displayName, collection, colourway, size, avgPerWeek, estStock, predictedOrder, flag, flagOrder, lastDelivDate,
+                reorder, nextOrderLabel: orderByLabel(c) });
   }
 
   // Collection filter
@@ -3654,18 +3629,9 @@ async function renderMerchOrderPrediction() {
   const FLAG_LABELS = { 'order-now': '🔴 Order now', 'order-soon': '🟡 Order soon', 'sufficient': '🟢 Sufficient', 'no-data': '⚪ No stock data' };
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#666666;padding:24px">No merch products match current filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666666;padding:24px">No merch products match current filters.</td></tr>';
   } else {
     tbody.innerHTML = filtered.map(r => {
-      const barPct = r.coversDays === null ? 0 : r.coversDays === Infinity ? 100 : Math.min(100, (r.coversDays / (CYCLE_WEEKS * 7)) * 100);
-      const barCol = r.flag === 'order-now' ? '#f87171' : r.flag === 'order-soon' ? '#e8c547' : r.flag === 'sufficient' ? '#4ade80' : '#4a4f66';
-
-      const coversCell = r.coversDays === null
-        ? '<span style="color:#4a4f66">—</span>'
-        : r.coversDays === Infinity
-          ? `<div class="covers-bar-wrap"><div class="covers-bar"><div class="covers-bar-fill" style="width:100%;background:${barCol}"></div></div><span style="color:#4a4f66;font-size:11px">∞</span></div>`
-          : `<div class="covers-bar-wrap"><div class="covers-bar"><div class="covers-bar-fill" style="width:${barPct}%;background:${barCol}"></div></div><span style="font-size:11px;white-space:nowrap">${r.coversDays}d</span></div>`;
-
       const predCell  = r.predictedOrder === null ? '<span style="color:#4a4f66">—</span>'
         : r.predictedOrder === 0 ? '<span class="pred-order-qty zero">0</span>'
         : `<span class="pred-order-qty">${r.predictedOrder} units</span>`;
@@ -3687,8 +3653,6 @@ async function renderMerchOrderPrediction() {
         <td style="color:#666666">${r.colourway  || '—'}</td>
         <td style="color:#666666">${r.size       || '—'}</td>
         <td class="right">${r.avgPerWeek > 0 ? r.avgPerWeek.toFixed(1) : '—'}</td>
-        <td class="right">${r.estStock !== null ? r.estStock : '<span style="color:#4a4f66">—</span>'}</td>
-        <td>${coversCell}</td>
         <td class="right">${predCell}</td>
         <td class="right" style="color:#666666;font-size:11px">${lastDelCell}</td>
         <td class="right" style="font-size:11px">${orderByCell}</td>
@@ -3696,19 +3660,18 @@ async function renderMerchOrderPrediction() {
     }).join('');
   }
 
-  renderShoppingList('predMerchShoppingList', rows.filter(r => r.reorder), null);
+  renderShoppingList('predMerchShoppingList', rows.filter(r => r.flag === 'order-now'), null);
 
-  const reorderCount = filtered.filter(r => r.reorder).length;
-  metaEl.textContent = `${filtered.length} variants · ${reorderCount} to reorder`;
+  const orderNowCount = filtered.filter(r => r.flag === 'order-now').length;
+  metaEl.textContent = `${filtered.length} variants · ${orderNowCount} to order now`;
 
   const cutoffStr = velCutoffWk
     ? (() => { const [y,m,d] = velCutoffWk.split('-'); return `${d}/${m}/${y}`; })()
     : 'all time';
   noteEl.innerHTML =
-    `<strong>How this works:</strong> Velocity = avg units/week over the last ${velWeeksActual} weeks of merch sales (from ${cutoffStr}). ` +
-    `Estimated stock = last delivery quantity − units sold since that delivery. ` +
-    `Predicted order = units needed to cover an <strong>${MERCH_CYCLE_WEEKS}-week cycle</strong> plus the ${MERCH_LEAD_DAYS}-day lead time, at current velocity. ` +
-    `Items are flagged to reorder if they won't last until the next order arrives.`;
+    `<strong>How this works:</strong> <strong>Order by</strong> is the next order date — last logged delivery plus the ${MERCH_CYCLE_WEEKS}-week restock cycle, with a ${MERCH_LEAD_DAYS}-day supplier lead time as the 🟡 Order soon warning window before it. ` +
+    `Predicted order = units to cover that cycle plus lead time, based on velocity (avg units/week over the last ${velWeeksActual} weeks of merch sales from ${cutoffStr}). ` +
+    `Log each delivery to keep the next-order date accurate.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -5355,11 +5318,6 @@ async function init() {
   // ── Order Prediction filters ──
   ['predCatFilter', 'predBrandFilter', 'predFlagFilter'].forEach(id => {
     document.getElementById(id).addEventListener('change', renderOrderPrediction);
-  });
-  document.getElementById('predCycleSelect').addEventListener('change', e => {
-    orderCycleWeeks = Number(e.target.value) || 2;
-    renderOrderPrediction();
-    if (typeof renderWeeklyReport === 'function') renderWeeklyReport();  // health strip uses the same model
   });
   ['predMerchCollFilter', 'predMerchFlagFilter'].forEach(id => {
     document.getElementById(id).addEventListener('change', renderMerchOrderPrediction);
