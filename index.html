@@ -4201,7 +4201,7 @@ async function parseInvoicePDF(file, lineBucket = 2) {
       const y = item.transform[5];
       const bucket = Math.round(y / LINE_BUCKET) * LINE_BUCKET;
       if (!lineMap.has(bucket)) lineMap.set(bucket, []);
-      lineMap.get(bucket).push({ x, str: item.str });
+      lineMap.get(bucket).push({ x, w: item.width || 0, h: item.height || 0, str: item.str });
     }
 
     // Sort lines: Y descending (top of page = highest Y in PDF space)
@@ -4210,7 +4210,18 @@ async function parseInvoicePDF(file, lineBucket = 2) {
     for (const bucket of sortedBuckets) {
       // Sort items within line: X ascending (left to right)
       const lineItems = lineMap.get(bucket).sort((a, b) => a.x - b.x);
-      const lineText  = lineItems.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+      // Reconstruct words by X-gap. Some PDFs (e.g. Muscle Finesse print view)
+      // position glyphs individually; a blind join(' ') would shred every word
+      // into "O r de r ed". Insert a space only when the gap between runs exceeds
+      // a fraction of glyph height, otherwise glue adjacent glyphs together.
+      let lineText = '';
+      let prevEnd  = null;
+      for (const it of lineItems) {
+        if (prevEnd !== null && (it.x - prevEnd) > (it.h || 8) * 0.28) lineText += ' ';
+        lineText += it.str;
+        prevEnd = it.x + it.w;
+      }
+      lineText = lineText.replace(/\s+/g, ' ').trim();
       if (lineText) fullText += lineText + '\n';
     }
     fullText += '\n';
