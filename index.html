@@ -690,8 +690,8 @@
       <button class="sub-tab" data-seg="merch">Merch</button>
     </div>
     <div id="wrHealthStrip" class="health-strip"></div>
-    <div class="kpi-row" id="wrKPIs"></div>
     <div id="wrTopSellers"></div>
+    <div class="kpi-row" id="wrKPIs"></div>
     <div id="wrDrill"></div>
     <div class="table-card" style="margin-top:20px">
       <div class="chart-title" style="padding:14px 18px 8px">Products — week of <span id="wrTableWk"></span></div>
@@ -3766,7 +3766,7 @@ function renderWeeklyReport() {
   renderWeeklyHealth();
 }
 
-// Top 3 best-selling products (by units) for the selected week, with WoW/MoM flags.
+// Top 5 best-selling products (by units) for the selected week, with WoW/MoM flags.
 function renderWeeklyTopSellers(paidAll) {
   const el = document.getElementById('wrTopSellers');
   if (!el) return;
@@ -3784,10 +3784,10 @@ function renderWeeklyTopSellers(paidAll) {
   const cur  = agg(weeklyWeekStart);
   const prev = agg(prevWk);
   const mon  = agg(monWk);
-  const top  = Object.entries(cur).sort((a, b) => b[1].units - a[1].units).slice(0, 3);
+  const top  = Object.entries(cur).sort((a, b) => b[1].units - a[1].units).slice(0, 5);
   if (!top.length) { el.innerHTML = ''; return; }
 
-  el.innerHTML = `<div class="wr-drill-title">Top 3 sellers · by units this week</div>
+  el.innerHTML = `<div class="wr-drill-title">Top 5 sellers · by units this week</div>
     <div class="kpi-row">` + top.map(([k, d], i) => `<div class="kpi-card" style="border-top-color:#e8c547">
       <div class="kpi-label">#${i + 1} · ${wrEsc(d.name)}</div>
       <div class="kpi-value">${d.units.toLocaleString()}<span style="font-size:13px;color:#666"> units</span></div>
@@ -3920,16 +3920,30 @@ function renderWeeklyHealth() {
   el.innerHTML = `<div class="health-badge healthy"><span class="hb-count">…</span> loading</div>`;
   loadDeliveries().then(d => {
     const det = computeStockDetails(d).filter(r => wrInSeg({ category: r.category }));
-    const reorder = det.filter(r => r.flag === 'order-now' || r.flag === 'order-soon').length;
+    const reorderRows = det.filter(r => r.flag === 'order-now' || r.flag === 'order-soon');
+    const reorder = reorderRows.length;
     const sufficient = det.filter(r => r.flag === 'sufficient');
     const isExcess = r => r.avgPerWeek > 0 && r.estStock != null && (r.estStock / r.avgPerWeek * 7) > (r.isMerch ? 84 : 28);
     const excess  = sufficient.filter(isExcess).length;
     const healthy = sufficient.length - excess;
     const seg = weeklySegment === 'merch' ? 'Merch' : '';
+
+     // 3 most urgent products: order-now first, then by fewest days of cover left.
+    const urgent = reorderRows
+      .map(r => ({ ...r, covers: r.avgPerWeek > 0 ? Math.round(r.estStock / r.avgPerWeek * 7) : Infinity }))
+      .sort((a, b) => a.flagOrder - b.flagOrder || a.covers - b.covers)
+      .slice(0, 3);
+    const urgentCards = urgent.map(r => {
+      const qtyTxt = r.qtyRequired > 0 ? `order ~${r.qtyRequired}${r.packQty ? ` (${r.packQty}×${r.packSize})` : ''}` : 'top up';
+      return `<div class="health-badge reorder urgent-prod" onclick="goToOrderPrediction('order-now', '${seg}')" title="${wrEsc(r.displayName)} · ${r.covers}d cover left · ${qtyTxt}">
+        <span class="hb-count">${r.covers}d</span><span class="hb-name">${wrEsc(r.displayName)}</span></div>`;
+    }).join('');
+
     el.innerHTML = `
       <div class="health-badge reorder" onclick="goToOrderPrediction('order-now', '${seg}')" title="View in Order Prediction"><span class="hb-count">${reorder}</span> Reorder</div>
       <div class="health-badge healthy" onclick="goToOrderPrediction('', '${seg}')" title="View in Order Prediction"><span class="hb-count">${healthy}</span> Healthy</div>
-      <div class="health-badge excess" title="Overstocked — covers beyond ${weeklySegment === 'merch' ? '84' : '28'} days"><span class="hb-count">${excess}</span> Excess</div>`;
+      <div class="health-badge excess" title="Overstocked — covers beyond ${weeklySegment === 'merch' ? '84' : '28'} days"><span class="hb-count">${excess}</span> Excess</div>
+      ${urgentCards}`;
   });
 }
 
