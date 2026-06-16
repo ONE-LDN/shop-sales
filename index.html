@@ -171,6 +171,8 @@
     .health-badge.reorder { border-left: 3px solid #f87171; }
     .health-badge.healthy { border-left: 3px solid #4ade80; }
     .health-badge.excess  { border-left: 3px solid #e8c547; }
+    .health-badge.urgent-prod .hb-count { font-size: 13px; font-weight: 700; color: #f87171; white-space: nowrap; }
+    .health-badge.urgent-prod .hb-name  { font-size: 12px; color: #cfcfcf; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .kpi-card.clickable { cursor: pointer; }
     .kpi-card.clickable:hover { border-color: #e8c547; }
     .kpi-card.selected { outline: 2px solid #e8c547; }
@@ -1729,6 +1731,16 @@ async function loadFromSupabase() {
     }
 
     if (!allData.length) return false;
+    // Drop isolated early outlier rows: if any dates are >90 days before the
+    // bulk of the data (the most-recent 90th-percentile date), exclude them.
+    // This removes the stray May 2024 block without touching the database.
+    const dates = allData.map(r => (r.date || '').slice(0, 10)).filter(Boolean).sort();
+    if (dates.length > 10) {
+      const p90 = dates[Math.floor(dates.length * 0.9)];
+      const cutoff = new Date(p90); cutoff.setDate(cutoff.getDate() - 90);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      allData = allData.filter(r => !r.date || r.date.slice(0, 10) >= cutoffStr);
+    }
     allRecords = allData.map(enrichRecord);
     document.getElementById('dataDot').classList.add('live');
     return true;
@@ -3928,7 +3940,7 @@ function renderWeeklyHealth() {
     const healthy = sufficient.length - excess;
     const seg = weeklySegment === 'merch' ? 'Merch' : '';
 
-     // 3 most urgent products: order-now first, then by fewest days of cover left.
+    // 3 most urgent products: order-now first, then by fewest days of cover left.
     const urgent = reorderRows
       .map(r => ({ ...r, covers: r.avgPerWeek > 0 ? Math.round(r.estStock / r.avgPerWeek * 7) : Infinity }))
       .sort((a, b) => a.flagOrder - b.flagOrder || a.covers - b.covers)
