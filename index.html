@@ -185,6 +185,11 @@
     .shopping-list ul.sl-items { list-style: none; margin: 0; padding: 0; }
     .shopping-list ul.sl-items li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid #1f1f1f; }
     .shopping-list .sl-qty { color: #9a9a9a; white-space: nowrap; }
+    .shopping-list table.sl-table { width: 100%; border-collapse: collapse; }
+    .shopping-list table.sl-table th { text-align: left; color: #9a9a9a; font-weight: 600; padding: 5px 8px; border-bottom: 1px solid #2a2a2a; white-space: nowrap; }
+    .shopping-list table.sl-table td { padding: 5px 8px; border-top: 1px solid #1f1f1f; }
+    .shopping-list table.sl-table th.right, .shopping-list table.sl-table td.right { text-align: right; }
+    .shopping-list .sl-missing { color: #e8c547; font-weight: 700; cursor: help; }
 
     /* ── Weekly Report section layout ── */
     .wr-section { margin-bottom: 32px; }
@@ -3346,21 +3351,38 @@ async function fillCostFromDeliveries() {
 // ── Auto shopping list ─────────────────────────────────────────────────────
 // The list holds only what's due in the imminent order run (order-now items);
 // order-soon items stay visible in the table but don't clutter the buy list.
-function renderShoppingList(containerId, reorderRows, orderLink) {
+function renderShoppingList(containerId, reorderRows, orderLink, asTable) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  if (!reorderRows.length) { el.innerHTML = `<div class="shopping-list empty">✓ Nothing to order right now</div>`; return; }
-  const items = reorderRows
-    .slice().sort((a, b) => b.avgPerWeek - a.avgPerWeek)
-    .map(r => {
-      const info = productLookup[r.key] || {};
-      const pack = info.pack_size && r.predictedOrder > 0 ? ` (${Math.ceil(r.predictedOrder / info.pack_size)}×${info.pack_size})` : '';
-      const qty = (r.predictedOrder != null && r.predictedOrder > 0) ? `${r.predictedOrder} units${pack}` : 'top up';
-      return `<li><span>${r.displayName}</span><span class="sl-qty">${qty}</span></li>`;
+  // Only list items that need a real quantity now — skip "top up" (0-unit) items,
+  // leaving them for a later run once an order can be justified.
+  const buyRows = reorderRows
+    .filter(r => r.predictedOrder != null && r.predictedOrder > 0)
+    .sort((a, b) => b.predictedOrder - a.predictedOrder);   // largest order first
+  if (!buyRows.length) { el.innerHTML = `<div class="shopping-list empty">✓ Nothing to order right now</div>`; return; }
+  const head = `<div class="sl-head"><strong>Order now</strong> · ${buyRows.length} item${buyRows.length !== 1 ? 's' : ''}${orderLink ? ` · <a href="${orderLink}" target="_blank" rel="noopener noreferrer">Order ↗</a>` : ''}</div>`;
+
+  if (asTable) {
+    const missing = '<span class="sl-missing" title="Pack size not set — please confirm so packs can be calculated">?</span>';
+    const body = buyRows.map(r => {
+      const ps = (productLookup[r.key] || {}).pack_size;
+      const packSizeCell = ps ? ps : missing;
+      const packsCell     = ps ? Math.ceil(r.predictedOrder / ps) : missing;
+      return `<tr><td>${r.displayName}</td><td class="right">${packSizeCell}</td><td class="right">${r.predictedOrder}</td><td class="right">${packsCell}</td></tr>`;
     }).join('');
-  el.innerHTML = `<div class="shopping-list">
-    <div class="sl-head"><strong>Order now</strong> · ${reorderRows.length} item${reorderRows.length !== 1 ? 's' : ''}${orderLink ? ` · <a href="${orderLink}" target="_blank" rel="noopener noreferrer">Order ↗</a>` : ''}</div>
-    <ul class="sl-items">${items}</ul></div>`;
+    el.innerHTML = `<div class="shopping-list">${head}
+      <table class="sl-table">
+        <thead><tr><th>Product</th><th class="right">Pack Size</th><th class="right">To Order – Units</th><th class="right">Order – Packs</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table></div>`;
+  } else {
+    const items = buyRows.map(r => {
+      const ps = (productLookup[r.key] || {}).pack_size;
+      const pack = ps ? ` (${Math.ceil(r.predictedOrder / ps)}×${ps})` : '';
+      return `<li><span>${r.displayName}</span><span class="sl-qty">${r.predictedOrder} units${pack}</span></li>`;
+    }).join('');
+    el.innerHTML = `<div class="shopping-list">${head}<ul class="sl-items">${items}</ul></div>`;
+  }
 }
 
 async function renderOrderPrediction() {
@@ -3523,7 +3545,7 @@ async function renderOrderPrediction() {
   }
 
   // ── Shopping list (order-now items only, independent of table filters) ──
-  renderShoppingList('predShoppingList', rows.filter(r => r.flag === 'order-now'), 'https://musclefinessewholesale.com/customer/account/login');
+  renderShoppingList('predShoppingList', rows.filter(r => r.flag === 'order-now'), 'https://musclefinessewholesale.com/customer/account/login', true);
 
   // ── Meta + note ──
   const orderNowCount = filtered.filter(r => r.flag === 'order-now').length;
