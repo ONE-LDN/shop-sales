@@ -190,6 +190,8 @@
     .shopping-list table.sl-table td { padding: 5px 8px; border-top: 1px solid #1f1f1f; }
     .shopping-list table.sl-table th.right, .shopping-list table.sl-table td.right { text-align: right; }
     .shopping-list .sl-missing { color: #e8c547; font-weight: 700; cursor: help; }
+    .shopping-list table.sl-table tr.sl-group td { padding-top: 11px; color: #e8c547; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-top: 1px solid #2a2a2a; }
+    .shopping-list table.sl-table tr.sl-group:first-child td { border-top: none; padding-top: 4px; }
 
     /* ── Weekly Report section layout ── */
     .wr-section { margin-bottom: 32px; }
@@ -3364,11 +3366,23 @@ function renderShoppingList(containerId, reorderRows, orderLink, asTable) {
 
   if (asTable) {
     const missing = '<span class="sl-missing" title="Pack size not set — please confirm so packs can be calculated">?</span>';
-    const body = buyRows.map(r => {
-      const ps = (productLookup[r.key] || {}).pack_size;
-      const packSizeCell = ps ? ps : missing;
-      const packsCell     = ps ? Math.ceil(r.predictedOrder / ps) : missing;
-      return `<tr><td>${r.displayName}</td><td class="right">${packSizeCell}</td><td class="right">${r.predictedOrder}</td><td class="right">${packsCell}</td></tr>`;
+    // Group by brand (alphabetical); within each brand, largest order first.
+    const byBrand = new Map();
+    for (const r of buyRows) {
+      const b = r.brand || 'Other';
+      if (!byBrand.has(b)) byBrand.set(b, []);
+      byBrand.get(b).push(r);
+    }
+    const body = [...byBrand.keys()].sort((a, b) => a.localeCompare(b)).map(brand => {
+      const rowsHtml = byBrand.get(brand)
+        .sort((a, b) => b.predictedOrder - a.predictedOrder)
+        .map(r => {
+          const ps = (productLookup[r.key] || {}).pack_size;
+          const packSizeCell = ps ? ps : missing;
+          const packsCell    = ps ? Math.ceil(r.predictedOrder / ps) : missing;
+          return `<tr><td>${r.displayName}</td><td class="right">${packSizeCell}</td><td class="right">${r.predictedOrder}</td><td class="right">${packsCell}</td></tr>`;
+        }).join('');
+      return `<tr class="sl-group"><td colspan="4">${brand}</td></tr>${rowsHtml}`;
     }).join('');
     el.innerHTML = `<div class="shopping-list">${head}
       <table class="sl-table">
