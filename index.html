@@ -4166,28 +4166,25 @@ async function renderStockReconciliation() {
     const name = (productLookup[key] || {}).display_name || key;
     const hist = histByProduct[key] || [];
 
-    // Opening = most recent count strictly before this week's Monday.
-    const prior    = [...hist].reverse().find(x => x.take_date < reconcileDate) || null;
-    const openDate = prior ? prior.take_date : null;
-    const opening  = prior ? Number(prior.actual_count) : null;
-
-    // Actual count for this week's session.
+    // Actual count for this week's closing session.
     const count = (() => {
       if (!sess) return null;
       const t = hist.find(x => x.take_date === sess);
       return t ? Number(t.actual_count) : null;
     })();
 
-    // Bootstrap: no prior → this is the first ever count; it sets the baseline only.
-    // Opening is blank (nothing to open from), but the count still shows in Stock Take.
-    const isBootstrap = !prior && sess !== null && count !== null;
-    const effOpenDate = isBootstrap ? null  : openDate;
-    const effOpening  = isBootstrap ? null  : opening;
+    // Opening = most recent count before the closing count (or before this Monday if no count yet).
+    // Using the closing count as the cutoff means a same-week entry (e.g. a bootstrapped opening
+    // entered on Mon/Tue of the first-ever week) is correctly found as the opening.
+    const priorCutoff = sess || reconcileDate;
+    const prior    = [...hist].reverse().find(x => x.take_date < priorCutoff) || null;
+    const effOpenDate = prior ? prior.take_date : null;
+    const effOpening  = prior ? Number(prior.actual_count) : null;
 
-    // End date for deliveries/sold: use count date if available; otherwise today
+    // End date for deliveries/sold: closing count date if available, otherwise today
     // (so a forward-navigation week shows a running theoretical before counting).
-    const todayISO   = new Date().toISOString().slice(0, 10);
-    const calcEndDate = isBootstrap ? null : (endSess || (effOpenDate ? todayISO : null));
+    const todayISO    = new Date().toISOString().slice(0, 10);
+    const calcEndDate = endSess || (effOpenDate ? todayISO : null);
 
     // Deliveries + sold since opening, up through calcEndDate.
     let deliv = 0, sold = 0, theo = null;
