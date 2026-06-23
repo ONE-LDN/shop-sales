@@ -4179,9 +4179,10 @@ async function renderStockReconciliation() {
     })();
 
     // Bootstrap: no prior → this is the first ever count; it sets the baseline only.
+    // Opening is blank (nothing to open from), but the count still shows in Stock Take.
     const isBootstrap = !prior && sess !== null && count !== null;
-    const effOpenDate = isBootstrap ? sess    : openDate;
-    const effOpening  = isBootstrap ? count   : opening;
+    const effOpenDate = isBootstrap ? null  : openDate;
+    const effOpening  = isBootstrap ? null  : opening;
 
     // End date for deliveries/sold: use count date if available; otherwise today
     // (so a forward-navigation week shows a running theoretical before counting).
@@ -4200,7 +4201,7 @@ async function renderStockReconciliation() {
       theo = effOpening + deliv - sold;
     }
 
-    const closingCount = isBootstrap ? null : count;
+    const closingCount = count;
     const endVar = (theo !== null && closingCount !== null) ? closingCount - theo : null;
     if (endVar !== null) { netVar += endVar; reconciled++; }
 
